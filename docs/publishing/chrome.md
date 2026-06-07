@@ -70,7 +70,7 @@ Ne **pas** cocher :
 
 URL de la politique de confidentialité : pointer vers la section
 « Confidentialité » du README sur GitHub
-(`https://github.com/atelier-sam/vespry#confidentialité`), ou copier
+(`https://github.com/atelier-sam/vespry#-confidentialité`), ou copier
 cette section dans une page dédiée si CWS exige une URL distincte.
 
 ## Fiche du store

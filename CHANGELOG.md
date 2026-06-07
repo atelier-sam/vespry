@@ -3,10 +3,10 @@
 Versionnage sémantique (semver). La version affichée dans le header de
 l'overlay et le popup vient de `package.json`.
 
-## [0.1.0] — non publié
+## [1.0.0] — 2026-06-07
 
-Première version fonctionnelle prête pour soumission Chrome Web Store,
-Microsoft Edge Add-ons et Mozilla AMO.
+Première version publique, soumise au Chrome Web Store, à Microsoft Edge
+Add-ons et à Mozilla AMO.
 
 ### Session 2026-05-21 (suite) — tuto fix critique + reset Vespry
 

@@ -109,7 +109,7 @@ Avant chaque soumission, vérifier :
      ne les transfère pas à des tiers.
    - **Privacy policy URL** : pointer vers une page publique. Deux options :
      - **Recommandé** : la section « Confidentialité » du README sur GitHub —
-       `https://github.com/atelier-sam/vespry#confidentialité`. C'est honnête,
+       `https://github.com/atelier-sam/vespry#-confidentialité`. C'est honnête,
        complet, et déjà rédigé.
      - Ou héberger une page dédiée sur `https://atelier-sam.github.io/vespry/privacy`.
 6. **Store listings** (au moins l'anglais) :

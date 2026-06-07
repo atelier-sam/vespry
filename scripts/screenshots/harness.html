@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vespry — harnais de captures</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #130f1f; }
+    </style>
+    <script>
+      // Shim `chrome.*` — le harnais tourne comme une page web ordinaire, pas
+      // comme une page d'extension. L'overlay lit getManifest() (version),
+      // chrome.storage.local (préférences) et runtime.* : on fournit le strict
+      // minimum, en mémoire, pour que tout rende sans extension chargée.
+      (function () {
+        var store = {};
+        var port = {
+          onMessage: { addListener: function () {}, removeListener: function () {} },
+          onDisconnect: { addListener: function () {} },
+          postMessage: function () {},
+          disconnect: function () {},
+        };
+        window.chrome = {
+          runtime: {
+            id: 'vespry-harness',
+            getManifest: function () {
+              return { version: '1.0.0', name: 'Vespry — Discord Export' };
+            },
+            getURL: function (p) { return p; },
+            sendMessage: function () { return Promise.resolve({}); },
+            connect: function () { return port; },
+            onMessage: { addListener: function () {}, removeListener: function () {} },
+          },
+          storage: {
+            local: {
+              get: function (keys) {
+                if (typeof keys === 'function') { keys({}); return; }
+                var out = {};
+                if (typeof keys === 'string') { if (keys in store) out[keys] = store[keys]; }
+                else if (Array.isArray(keys)) { keys.forEach(function (k) { if (k in store) out[k] = store[k]; }); }
+                else if (keys && typeof keys === 'object') {
+                  Object.keys(keys).forEach(function (k) { out[k] = (k in store) ? store[k] : keys[k]; });
+                } else { out = Object.assign({}, store); }
+                return Promise.resolve(out);
+              },
+              set: function (obj) { Object.assign(store, obj); return Promise.resolve(); },
+              remove: function (k) { delete store[k]; return Promise.resolve(); },
+            },
+            onChanged: { addListener: function () {}, removeListener: function () {} },
+          },
+        };
+      })();
+    </script>
+  </head>
+  <body>
+    <script type="module" src="./harness.tsx"></script>
+  </body>
+</html>

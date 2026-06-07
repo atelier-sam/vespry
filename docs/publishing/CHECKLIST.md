@@ -49,21 +49,21 @@ Avant upload, vérifier dans chaque zip : `manifest.json` à la racine,
 - **Notes reviewers** : blocs prêts dans `chrome.md` (§ Avis aux reviewers) et
   `edge.md` (§ 7 Notes for certification).
 
-## 4. Captures d'écran — ⏳ à produire
+## 4. Captures d'écran — ✅ générées (1280×800)
 
-`docs/screenshots/` ne contient pour l'instant que `popup.png`. Les fiches
-réclament 5-6 captures **1280×800**. Elles sont générées **sans session
-Discord réelle** (zéro fuite de serveurs privés) par un harnais qui rend le
-vrai overlay avec des données synthétiques (cast Sora / Kitsune / Tanuki,
-déjà utilisé pour la démo HTML) :
+Produites **sans session Discord réelle** (zéro fuite de serveurs privés) :
+un harnais (`scripts/screenshots/`) rend le **vrai** overlay et le **vrai**
+moteur `toHtml` avec des données synthétiques (cast Sora / Kitsune / Tanuki),
+capturés en 2× puis rééchantillonnés en 1280×800 exact.
 
 ```sh
-node scripts/store-screenshots.mjs   # → docs/screenshots/*.png
+node scripts/screenshots/capture.mjs   # overlay, advanced, multi-select, export-done, html-export
+node scripts/screenshots/gen-logo.mjs  # logo-300 (tuile Edge)
 ```
 
-Cibles : `overlay.png`, `advanced.png`, `multi-select.png`,
-`html-export.png`, `export-done.png`. Logo Edge 300×300 :
-`docs/screenshots/logo-300.png`.
+Disponibles dans `docs/screenshots/` : `overlay.png`, `advanced.png`,
+`multi-select.png`, `export-done.png`, `html-export.png`, `popup.png`,
+`logo-300.png` (Edge 300×300).
 
 ## 5. Mise en ligne — actions de Sam (externes)
 

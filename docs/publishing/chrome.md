@@ -70,7 +70,7 @@ Ne **pas** cocher :
 
 URL de la politique de confidentialité : pointer vers la section
 « Confidentialité » du README sur GitHub
-(`https://github.com/ateliersam86/vespry#confidentialité`), ou copier
+(`https://github.com/atelier-sam/vespry#confidentialité`), ou copier
 cette section dans une page dédiée si CWS exige une URL distincte.
 
 ## Fiche du store
@@ -126,7 +126,7 @@ DISCLAIMER: Automating a Discord user account is against Discord ToS.
 Tool is for personal use on one's own data, at user's own risk.
 This is stated in the README and in-extension.
 
-The source code is at https://github.com/ateliersam86/vespry (MIT).
+The source code is at https://github.com/atelier-sam/vespry (MIT).
 ```
 
 ## Délai de review
@@ -143,6 +143,6 @@ https://developer.chrome.com/docs/webstore/using-api.
 
 ## Statut du dépôt
 
-- Repo : https://github.com/ateliersam86/vespry
+- Repo : https://github.com/atelier-sam/vespry
 - Licence : MIT — fichier `LICENSE` à la racine.
 - `manifest.json` est généré par Vite à partir de `src/manifest.ts`.

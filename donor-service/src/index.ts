@@ -44,7 +44,7 @@ export interface Env {
    *  depuis les rapports de schéma. Optionnel : si absent, on stocke
    *  la signature en base mais on n'ouvre pas d'issue. */
   GITHUB_TOKEN?: string;
-  /** `owner/repo` cible des issues automatiques. Défaut : ateliersam86/vespry. */
+  /** `owner/repo` cible des issues automatiques. Défaut : atelier-sam/vespry. */
   GITHUB_REPO?: string;
 }
 

@@ -57,7 +57,7 @@ interface Env {
   DB: D1Database;
   /** PAT GitHub avec scope `issues:write` sur le dépôt Vespry. */
   GITHUB_TOKEN?: string;
-  /** Dépôt cible des issues, format `owner/repo`. Défaut : ateliersam86/vespry. */
+  /** Dépôt cible des issues, format `owner/repo`. Défaut : atelier-sam/vespry. */
   GITHUB_REPO?: string;
 }
 
@@ -67,7 +67,7 @@ async function createGithubIssue(
   payload: SchemaReportPayload,
 ): Promise<string | null> {
   if (!env.GITHUB_TOKEN) return null;
-  const repo = env.GITHUB_REPO ?? 'ateliersam86/vespry';
+  const repo = env.GITHUB_REPO ?? 'atelier-sam/vespry';
   const sorted = [...payload.fields].sort();
   const title = `[api-watch] Champs Discord inconnus : ${sorted.slice(0, 3).join(', ')}`
     + (sorted.length > 3 ? '…' : '');

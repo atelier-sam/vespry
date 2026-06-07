@@ -175,7 +175,7 @@ const CHANNEL_TYPE_NAMES: Record<number, string> = {
  * page une fois v0.1.0 publiée). Inclus dans chaque fichier JSON pour
  * permettre à un agent IA / outil de validation de connaître le contrat.
  */
-const JSON_SCHEMA_URL = 'https://github.com/ateliersam86/vespry/blob/main/docs/SCHEMA.md';
+const JSON_SCHEMA_URL = 'https://github.com/atelier-sam/vespry/blob/main/docs/SCHEMA.md';
 
 /**
  * Version Vespry à embarquer dans le JSON. `chrome.runtime.getManifest()`

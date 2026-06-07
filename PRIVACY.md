@@ -13,8 +13,8 @@ comment, où, et ce qu'elle n'envoie nulle part.
 
 - **Éditeur** : Samuel Muselet (L'Atelier de Sam)
 - **Contact** : via les
-  [issues GitHub](https://github.com/ateliersam86/vespry/issues)
-- **Code source** : https://github.com/ateliersam86/vespry (MIT)
+  [issues GitHub](https://github.com/atelier-sam/vespry/issues)
+- **Code source** : https://github.com/atelier-sam/vespry (MIT)
 
 ## Principe : tout reste en local
 
@@ -89,7 +89,7 @@ l'activer ou la désactiver à tout moment dans le mode Avancé.
 ### 4. GitHub Raw — fichier `credits.json`
 
 Au démarrage de l'overlay, Vespry fait un GET sur
-`https://raw.githubusercontent.com/ateliersam86/vespry/main/credits.json`
+`https://raw.githubusercontent.com/atelier-sam/vespry/main/credits.json`
 pour récupérer la liste à jour des plateformes de soutien (Ko-fi, GitHub
 Sponsors, URL du Worker des dons) sans nécessiter une mise à jour de
 l'extension elle-même. Le fichier `credits.json` est public, statique,
@@ -122,7 +122,7 @@ Discord.
 ### 6. GitHub API — check de version
 
 À l'ouverture du popup, Vespry fait un GET sur
-`https://api.github.com/repos/ateliersam86/vespry/releases/latest` pour
+`https://api.github.com/repos/atelier-sam/vespry/releases/latest` pour
 détecter si une nouvelle version de l'extension est disponible. Si oui,
 une bannière propose de l'installer en cliquant (lien vers GitHub
 Releases).
@@ -147,7 +147,7 @@ la demande). Les exports restent locaux à la machine de l'utilisateur.
 - Pour les exports locaux : l'utilisateur a un contrôle total
   (supprimer le `.zip` et vider le `chrome.storage` suffit).
 - Pour le mur des soutiens public : envoyer une demande via les
-  [issues GitHub](https://github.com/ateliersam86/vespry/issues) ; le
+  [issues GitHub](https://github.com/atelier-sam/vespry/issues) ; le
   donneur ou son message sera masqué.
 
 ## Cookies

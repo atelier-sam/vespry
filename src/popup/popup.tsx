@@ -117,7 +117,7 @@ function Popup(): JSX.Element {
            (checkForUpdate retourne null dans tous les autres cas). */
         <a
           class="popup__update"
-          href={`https://github.com/ateliersam86/vespry/releases/tag/v${latestVersion}`}
+          href={`https://github.com/atelier-sam/vespry/releases/tag/v${latestVersion}`}
           target="_blank"
           rel="noopener noreferrer"
         >

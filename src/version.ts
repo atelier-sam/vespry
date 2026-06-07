@@ -10,7 +10,7 @@
  */
 
 // Dépôt GitHub du projet (owner/repo) — alimente checkForUpdate() et loadCredits().
-export const GITHUB_REPO = 'ateliersam86/vespry';
+export const GITHUB_REPO = 'atelier-sam/vespry';
 
 /** Version actuellement exécutée (canonique). */
 export function getVersion(): string {

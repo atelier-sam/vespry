@@ -60,8 +60,8 @@ Avant chaque soumission, vérifier :
    - Markets : tous (par défaut). Pas de raison de restreindre.
 4. **Properties** :
    - Category : `Productivity`.
-   - Website : `https://github.com/ateliersam86/vespry`.
-   - Support contact : `https://github.com/ateliersam86/vespry/issues`.
+   - Website : `https://github.com/atelier-sam/vespry`.
+   - Support contact : `https://github.com/atelier-sam/vespry/issues`.
    - Mature content : `Non`.
    - Privacy policy : `Yes — collects/transmits personal information`.
      Lire la section dédiée plus bas pour la déclaration honnête.
@@ -109,9 +109,9 @@ Avant chaque soumission, vérifier :
      ne les transfère pas à des tiers.
    - **Privacy policy URL** : pointer vers une page publique. Deux options :
      - **Recommandé** : la section « Confidentialité » du README sur GitHub —
-       `https://github.com/ateliersam86/vespry#confidentialité`. C'est honnête,
+       `https://github.com/atelier-sam/vespry#confidentialité`. C'est honnête,
        complet, et déjà rédigé.
-     - Ou héberger une page dédiée sur `https://ateliersam86.github.io/vespry/privacy`.
+     - Ou héberger une page dédiée sur `https://atelier-sam.github.io/vespry/privacy`.
 6. **Store listings** (au moins l'anglais) :
    - **Extension name** : `Vespry — Discord Export` (récupéré du manifest).
    - **Description** : reprendre les sections « Vespry » + « Le problème »

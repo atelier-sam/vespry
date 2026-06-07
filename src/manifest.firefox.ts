@@ -46,7 +46,7 @@ export default defineManifest({
       // supporté à la fois sur Desktop ET Android (140 = Desktop seulement).
       // Champ exigé par AMO pour publier en MV3 depuis la mise en conformité
       // EU AI Act. Couvre > 99 % des utilisateurs Firefox actifs.
-      id: 'vespry@ateliersam86.github.io',
+      id: 'vespry@atelier-sam.github.io',
       strict_min_version: '142.0',
       // Vespry ne collecte aucune donnée utilisateur tierce : tout reste
       // local (IndexedDB → zip).
@@ -116,8 +116,8 @@ export default defineManifest({
     // peut exiger ces déclarations sinon les requêtes échouent
     // silencieusement. Documenté côté politique de confidentialité.
     // Audit final 2026-05-19 #9.
-    'https://api.github.com/repos/ateliersam86/vespry/*',
-    'https://raw.githubusercontent.com/ateliersam86/vespry/*',
+    'https://api.github.com/repos/atelier-sam/vespry/*',
+    'https://raw.githubusercontent.com/atelier-sam/vespry/*',
     'https://vespry-donors.sam-muselet.workers.dev/*',
   ],
 

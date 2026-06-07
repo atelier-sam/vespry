@@ -91,7 +91,7 @@ Vérifications manuelles à faire avant chaque release :
    - Catégorie : `Tabs` ou `Other`.
    - Tags : `discord`, `export`, `backup`, `ai`.
    - Captures d'écran : `docs/screenshots/*.png`.
-   - Site dev : `https://github.com/ateliersam86/vespry`.
+   - Site dev : `https://github.com/atelier-sam/vespry`.
    - Politique de confidentialité — URL ou texte. Voir section dédiée
      `README.md` → Confidentialité, à reprendre intégralement.
 5. Choix licence : MIT (déjà déclaré dans le repo).
@@ -106,7 +106,7 @@ npm run firefox:package
 # upload du nouveau zip dans Developer Hub > Vespry > New Version
 ```
 
-L'id de l'addon reste constant (`vespry@ateliersam86.github.io`,
+L'id de l'addon reste constant (`vespry@atelier-sam.github.io`,
 défini dans `src/manifest.firefox.ts`) — c'est la clé d'identification AMO.
 
 ## Délais et review

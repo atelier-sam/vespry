@@ -43,7 +43,7 @@ export function watchMessageSchema(message: unknown): void {
     console.info(
       `[Vespry] Champ Discord inconnu rencontré : « ${key} ». `
       + 'Il est préservé dans le JSON exporté. '
-      + 'Voir https://github.com/ateliersam86/vespry/issues si Vespry doit le rendre.',
+      + 'Voir https://github.com/atelier-sam/vespry/issues si Vespry doit le rendre.',
     );
   }
 }

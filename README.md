@@ -12,7 +12,7 @@
 <br/>
 
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/ateliersam86/vespry/actions/workflows/ci.yml/badge.svg)](https://github.com/ateliersam86/vespry/actions/workflows/ci.yml)
+[![CI](https://github.com/atelier-sam/vespry/actions/workflows/ci.yml/badge.svg)](https://github.com/atelier-sam/vespry/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/version-0.1.0-informational)](package.json)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
@@ -358,7 +358,7 @@ AES-256, suppression idempotente.
 
 Gratuit et open source, sans publicité. Si l'outil t'a rendu service :
 
-- [**GitHub Sponsors**](https://github.com/sponsors/ateliersam86) — récurrent.
+- [**GitHub Sponsors**](https://github.com/sponsors/atelier-sam) — récurrent.
 - Bouton **Soutenir** dans l'extension — don ponctuel via Stripe.
 
 Les soutiens publics apparaissent sur le **mur des soutiens** de l'extension.
@@ -369,9 +369,9 @@ Les soutiens publics apparaissent sur le **mur des soutiens** de l'extension.
 
 ## 💬 Contact
 
-- 💡 **Proposer une idée** : [Discussions GitHub](https://github.com/ateliersam86/vespry/discussions/new?category=ideas)
-- 🐛 **Signaler un bug** : [Issues GitHub](https://github.com/ateliersam86/vespry/issues)
-- ✉️ **Privé** : profil [@ateliersam86](https://github.com/ateliersam86)
+- 💡 **Proposer une idée** : [Discussions GitHub](https://github.com/atelier-sam/vespry/discussions/new?category=ideas)
+- 🐛 **Signaler un bug** : [Issues GitHub](https://github.com/atelier-sam/vespry/issues)
+- ✉️ **Privé** : profil [@atelier-sam](https://github.com/atelier-sam)
 
 <br/>
 

@@ -8,13 +8,13 @@
     "name": "Samuel Muselet",
     "url": "https://atelier-sam.fr"
   },
-  "homepage": "https://github.com/ateliersam86/vespry#readme",
+  "homepage": "https://github.com/atelier-sam/vespry#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ateliersam86/vespry.git"
+    "url": "https://github.com/atelier-sam/vespry.git"
   },
   "bugs": {
-    "url": "https://github.com/ateliersam86/vespry/issues"
+    "url": "https://github.com/atelier-sam/vespry/issues"
   },
   "type": "module",
   "scripts": {

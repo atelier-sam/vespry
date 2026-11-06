@@ -105,6 +105,53 @@ function safeName(s: string): string {
 }
 
 /**
+ * Attribue des noms uniques dans le zip.
+ *
+ * Pourquoi : conflux refuse une entrée dont le chemin existe déjà (« File
+ * already exists ») et le paquet entier échoue. Or les homonymes sont la
+ * norme sur Discord : toutes les captures collées s'appellent `image.png`,
+ * et deux catégories ont souvent chacune leur salon « général ». La
+ * comparaison ignore la casse, parce que macOS et Windows décompressent
+ * sur des systèmes de fichiers insensibles à la casse.
+ *
+ * Le premier venu garde son nom ; les suivants prennent `-2`, `-3`…
+ * avant l'extension (`image-2.png`).
+ */
+export class ZipNameAllocator {
+  private readonly used = new Set<string>();
+
+  /**
+   * @param name chemin ou nom à réserver.
+   * @param keepExtension `true` : le suffixe se place avant la dernière
+   *   extension du dernier segment ; `false` : en fin de nom (un nom de
+   *   salon comme `général.croquis` n'a pas d'extension).
+   */
+  claim(name: string, keepExtension = true): string {
+    const slash = name.lastIndexOf('/');
+    const dot = name.lastIndexOf('.');
+    const cut = keepExtension && dot > slash + 1 ? dot : name.length;
+    const stem = name.slice(0, cut);
+    const ext = name.slice(cut);
+    let candidate = name;
+    for (let n = 2; this.used.has(candidate.toLowerCase()); n += 1) {
+      candidate = `${stem}-${n}${ext}`;
+    }
+    this.used.add(candidate.toLowerCase());
+    return candidate;
+  }
+}
+
+/**
+ * Nom de base des fichiers d'un salon. Un nom qui finit par `.partN`
+ * imiterait le fichier d'une partition d'un autre salon (`général.part1.json`) :
+ * on le décale d'un `_`.
+ */
+function channelBaseName(raw: string): string {
+  const name = safeName(raw);
+  return /\.part\d+$/i.test(name) ? `${name}_` : name;
+}
+
+/**
  * Mapping enum lisible des `RawMessage.type` numériques Discord.
  * Permet à un agent IA "froid" d'avoir directement `"REPLY"` plutôt qu'à
  * deviner `19`. Le numérique reste dans `type` (forward-compat API).
@@ -171,9 +218,9 @@ const CHANNEL_TYPE_NAMES: Record<number, string> = {
 };
 
 /**
- * URL du schéma JSON publié (placeholder — à mettre derrière une vraie
- * page une fois v0.1.0 publiée). Inclus dans chaque fichier JSON pour
- * permettre à un agent IA / outil de validation de connaître le contrat.
+ * Documentation du format (`docs/SCHEMA.md`, à tenir à jour avec ce
+ * fichier). Incluse dans chaque fichier JSON pour qu'un agent IA ou un outil
+ * sache lire le contrat.
  */
 const JSON_SCHEMA_URL = 'https://github.com/atelier-sam/vespry/blob/main/docs/SCHEMA.md';
 
@@ -353,19 +400,20 @@ export async function packageRun(
   const profile = opts.profile ?? detectPerfProfile();
 
   const channelSlug = new Map<string, string>();
+  const slugNames = new ZipNameAllocator();
   for (const ch of channels) {
     // Threads (types 10/11/12) et posts de forum (parent_id présent) :
     // préfixer le nom du fichier par celui du salon parent quand on le
     // trouve dans le run. Permet à un utilisateur qui décompresse
-    // d'avoir « général.questions-sam.json » au lieu d'un fichier
-    // orphelin « questions-sam.json ». DCE le fait optionnellement,
+    // d'avoir « général.croquis.json » au lieu d'un fichier
+    // orphelin « croquis.json ». DCE le fait optionnellement,
     // Vespry l'applique systématiquement.
     const isThread = ch.type === 10 || ch.type === 11 || ch.type === 12;
     if (isThread && ch.category) {
       // category = nom du parent quand on l'a stocké (cf. planGuildExport)
-      channelSlug.set(ch.channelId, safeName(`${ch.category}.${ch.name}`));
+      channelSlug.set(ch.channelId, slugNames.claim(channelBaseName(`${ch.category}.${ch.name}`), false));
     } else {
-      channelSlug.set(ch.channelId, safeName(ch.name));
+      channelSlug.set(ch.channelId, slugNames.claim(channelBaseName(ch.name), false));
     }
   }
 
@@ -376,11 +424,14 @@ export async function packageRun(
   let assetsDownloaded = 0;
   let assetsFailed = 0;
 
+  const assetNames = new ZipNameAllocator();
   for (const asset of assets) {
     if (asset.status === 'failed') assetsFailed += 1;
     if (asset.status !== 'done' || !asset.blob) continue;
+    // Même URL déjà rangée (média cité deux fois) : un seul fichier suffit.
+    if (urlToPath.has(asset.url)) continue;
     const slug = channelSlug.get(asset.channelId) ?? 'unknown';
-    const path = `${KIND_DIR[asset.kind]}/${slug}/${safeName(asset.filename)}`;
+    const path = assetNames.claim(`${KIND_DIR[asset.kind]}/${slug}/${safeName(asset.filename)}`);
     urlToPath.set(asset.url, path);
     assetEntries.push({ path, blob: asset.blob });
     assetsDownloaded += 1;

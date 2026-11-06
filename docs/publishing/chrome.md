@@ -41,15 +41,16 @@ données utilisateur ». Voici les justifications correspondant à `manifest.ts`
 |---|---|
 | `storage` | Stocke les préférences de l'utilisateur (thème, mode Avancé, template de nom de fichier zip, planning d'export) et le jeton de session Discord capté pour les appels API d'export. |
 | `unlimitedStorage` | IndexedDB stocke les blobs des médias téléchargés pendant un export — un gros serveur peut dépasser les 100 Mo du quota par défaut, ce qui ferait crasher l'export. |
-| `tabs` | Ouvre / active l'onglet Discord depuis le popup quand l'utilisateur clique « Ouvrir Discord ». |
-| `offscreen` | Héberge le moteur d'export dans un document offscreen tab-indépendant — sans cette permission, l'export s'interromprait dès que l'onglet Discord est fermé. |
+| `tabs` | Trouve l'onglet discord.com ouvert pour lui confier les requêtes d'export (elles partent de la page, par le client Discord), et ouvre / active cet onglet depuis le popup. Aucun autre onglet n'est lu. |
+| `offscreen` | Héberge le moteur d'export (checkpoint, reprise, assemblage du zip) dans un document offscreen : un rechargement de la page Discord n'interrompt pas l'export. Le moteur n'émet aucune requête vers Discord lui-même. |
 | `notifications` | Avertit l'utilisateur quand un export se termine, est mis en pause (jeton expiré) ou échoue. Aucune notification non sollicitée. |
 | `downloads` | Déclenche le téléchargement de l'archive `.zip` finale. |
 | `alarms` | Réveille Vespry aux heures programmées par l'utilisateur pour les exports récurrents (mode Avancé → Planification). |
 
 `host_permissions` (`discord.com`, `cdn.discordapp.com`, `media.discordapp.net`) :
-nécessaires pour appeler l'API Discord et télécharger les médias (les CDN
-Discord refusent les requêtes cross-origin sans cette déclaration).
+nécessaires pour injecter le panneau et le relais de requêtes dans la page
+discord.com, et télécharger les médias (les CDN Discord refusent les
+requêtes cross-origin sans cette déclaration).
 
 ## Déclaration d'usage des données utilisateur
 
@@ -77,8 +78,8 @@ cette section dans une page dédiée si CWS exige une URL distincte.
 
 - **Nom court** : `Vespry — Discord Export`
 - **Description courte** (132 caractères max) :
-  `Exporte ton historique Discord — serveurs, salons, DMs — dans un zip,
-  en local. Reprend après crash. 15 langues. Gratuit, open source.`
+  `Exporte ton historique Discord (serveurs, salons, DMs) en zip, en local.
+  Mode discret, reprise après crash, 15 langues. Open source.`
 - **Catégorie** : « Productivité » (sous-cat. « Utilities »).
 - **Langue principale** : `fr` (français), avec la traduction `en` en
   complément (les deux fiches partagent les captures).
@@ -109,9 +110,11 @@ PURPOSE: Allow Discord users to export their own message history
 Discord's official "Request Data" feature, but immediate, structured,
 and locally controlled.
 
-DATA HANDLING: 100% local. The Discord session token is read from
-the page and used only to call Discord's own API on behalf of the
-user. No data is ever sent to a third-party server.
+DATA HANDLING: 100% local. Requests to Discord are made from the
+user's own open discord.com tab, through the Discord web client, at a
+human pace (one channel at a time, randomized delays, regular breaks)
+and stop at the first refusal from Discord. The extension itself never
+calls Discord's API. No data is ever sent to a third-party server.
 
 OPTIONAL TELEMETRY: A "schema watch" toggle (default OFF, advanced
 panel) sends ONLY {version, locale, field_names[]} when Discord
@@ -122,9 +125,11 @@ OPTIONAL DONATIONS: Stripe Checkout opens in a popup when user clicks
 "Support" — no card data ever touches Vespry. Donor wall is
 public-only aggregated content from a Cloudflare Worker (no tracking).
 
-DISCLAIMER: Automating a Discord user account is against Discord ToS.
-Tool is for personal use on one's own data, at user's own risk.
-This is stated in the README and in-extension.
+DISCLAIMER: Automating a Discord user account is against Discord ToS,
+and Discord has penalized accounts for exporting since March 2026.
+Tool is for personal use on one's own data, at user's own risk. This is
+stated in the README and in a warning shown before the first export, in
+the user's language (15 languages).
 
 The source code is at https://github.com/atelier-sam/vespry (MIT).
 ```

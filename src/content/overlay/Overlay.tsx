@@ -56,6 +56,7 @@ import type { EnqueueExtras, QueueItemView } from '../../messaging';
 import type { RemoteController } from '../../ui/remote-controller';
 import { ScheduleSection } from './ScheduleSection';
 import { PurgeModal } from './PurgeModal';
+import { PaceSetting } from './PaceSetting';
 import { FilenameTemplateField } from './FilenameTemplateField';
 import { PasswordSection } from './PasswordSection';
 import { HelpTip } from '../../ui/HelpTip';
@@ -599,17 +600,16 @@ export function Overlay({
       doEnqueue();
       return;
     }
-    // Pré-flight : appel search pour chaque salon (cap concurrence 3).
-    // Spinner sur le bouton pendant l'attente — ~1-3 s typique.
+    // Pré-flight : une recherche par salon, en série au rythme choisi et
+    // mise en cache 30 min côté moteur. Spinner sur le bouton pendant l'attente.
     setEstimating(true);
     try {
       const total = await controller.estimate(
         activeGuild.id,
         picked.map((c) => c.id),
       );
-      // Seuil : 10 000 messages — ordre de grandeur où la pagination
-      // (100 msgs / 700 ms throttle ≈ ~70 min sans média) et le pré-comptage
-      // commencent à se voir. `null` (toutes les searches ont échoué) →
+      // Seuil : 10 000 messages — ordre de grandeur où la durée se voit
+      // (100 lots au rythme Discret, plus les pauses régulières). `null` (toutes les searches ont échoué) →
       // on continue sans avertir, l'utilisateur le verra au pré-comptage
       // du runner.
       if (total !== null && total >= 10_000) {
@@ -741,6 +741,7 @@ export function Overlay({
           onBack={() => setView('export')}
           credits={credits}
           feed={donorFeed}
+          onSupport={() => setShowSupport(true)}
         />
       ) : (
       <>
@@ -1107,6 +1108,7 @@ export function Overlay({
                 de télémétrie (envoi anonyme côté réseau) d'un simple filtre
                 local. Cf. feedback Sam 2026-05-21 : le toggle était mal placé
                 dans « Filtres » et son intitulé n'était pas compréhensible. */}
+            <PaceSetting controller={controller} />
             <div class="v-field">
               <label>{t('privacy.section')}</label>
               <CheckRow
@@ -2037,20 +2039,15 @@ function Credit(): JSX.Element {
 }
 
 /**
- * Modale d'avertissement ToS Discord — affichée au **premier export**,
- * puis facultative ensuite si l'utilisateur a coché « ne plus afficher ».
+ * Modale d'avertissement ToS Discord — affichée au **premier export**, puis
+ * plus jamais si l'utilisateur a coché « ne plus afficher ».
  *
- * Rationale : Vespry utilise l'API Discord avec un compte utilisateur
- * (le seul moyen d'accéder à ses propres DMs), ce qui sort des
- * conditions d'utilisation de Discord. Aucun concurrent ne le mentionne
- * dans l'app — on en fait un argument de transparence pro-utilisateur,
- * sobre, sans paniquer.
- *
- * Texte volontairement non-i18n (FR fixe) pour deux raisons :
- *   1. Les disclaimers légaux gagnent à rester dans la langue de
- *      l'éditeur — l'utilisateur peut le copier-coller, le comparer.
- *   2. La traduction approximative d'un texte légal porte un risque
- *      sémantique. Une traduction CrowdIn validée arrivera plus tard.
+ * Réécrite le 06/11/2026 (chantier « export discret ») : l'ancien texte
+ * disait « rarement sanctionné », devenu faux depuis que Discord sanctionne
+ * les exports par compte utilisateur (mars 2026). Le texte dit maintenant ce
+ * qui se passe, ce que Vespry fait pour limiter le risque, et qu'il n'existe
+ * aucune garantie. Traduit dans les 15 langues : un avertissement qu'on ne
+ * comprend pas n'avertit personne.
  */
 function ToSModal({
   onCancel,
@@ -2062,36 +2059,25 @@ function ToSModal({
   const [remember, setRemember] = useState(true);
   return (
     <div class="v-modal-bd" onClick={onCancel}>
-      <div class="v-modal v-modal--tos" onClick={(e) => e.stopPropagation()}>
-        <div class="v-tos-title">À lire avant ton premier export</div>
+      <div
+        class="v-modal v-modal--tos"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('tos.title')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div class="v-tos-title">{t('tos.title')}</div>
         <div class="v-tos-body">
           <p>
-            Vespry utilise l'API officielle de Discord avec
-            <b> ton compte personnel </b>
-            pour récupérer ton historique. Discord interdit techniquement
-            l'automatisation des comptes utilisateurs dans ses
-            <a
-              href="https://discord.com/terms"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {' '}conditions d'utilisation
-            </a>.
+            {t('tos.account')}{' '}
+            <a href="https://discord.com/terms" target="_blank" rel="noopener noreferrer">
+              {t('tos.terms_link')}
+            </a>
           </p>
-          <p>
-            En pratique, exporter ton propre historique est rarement sanctionné.
-            C'est ce que font des outils similaires depuis des années, mais la
-            décision revient à Discord, pas à nous.
-          </p>
-          <p>
-            <b>Vespry est conçu pour un usage privé</b> : tes propres serveurs,
-            tes propres DMs, tes propres archives. Pas pour scraper massivement
-            les conversations d'autres personnes.
-          </p>
-          <p>
-            En continuant, tu reconnais utiliser Vespry sur
-            <b> tes propres données</b>, à tes risques.
-          </p>
+          <p><b>{t('tos.sanctions')}</b></p>
+          <p>{t('tos.measures')}</p>
+          <p><b>{t('tos.no_guarantee')}</b></p>
+          <p>{t('tos.private')}</p>
         </div>
         <label class="v-tos-remember">
           <input
@@ -2099,14 +2085,14 @@ function ToSModal({
             checked={remember}
             onChange={(e) => setRemember((e.target as HTMLInputElement).checked)}
           />
-          <span>Ne plus afficher cet avertissement</span>
+          <span>{t('tos.remember')}</span>
         </label>
         <div class="v-tos-actions">
           <button class="v-btn v-btn--ghost" onClick={onCancel}>
-            Annuler
+            {t('tos.cancel')}
           </button>
           <button class="v-btn" onClick={() => onConfirm(remember)}>
-            J'ai compris, je lance l'export
+            {t('tos.confirm')}
           </button>
         </div>
       </div>
@@ -2355,39 +2341,18 @@ function SupportModal({
   );
 }
 
-/** Bouton de don vers une plateforme — désactivé si l'URL n'est pas configurée. */
-function DonateButton({
-  url,
-  icon,
-  label,
-}: {
-  url: string | undefined;
-  icon: JSX.Element;
-  label: string;
-}): JSX.Element {
-  if (!url) {
-    return (
-      <button class="v-donate" disabled>
-        {icon} {t('credits.donate_soon')}
-      </button>
-    );
-  }
-  return (
-    <button class="v-donate" onClick={() => window.open(url, '_blank', 'noopener')}>
-      {icon} {label}
-    </button>
-  );
-}
-
 /** Panneau Soutiens — appel au don, mur des soutiens complet, contributeurs. */
 function CreditsPanel({
   onBack,
   credits,
   feed,
+  onSupport,
 }: {
   onBack: () => void;
   credits: Credits | null;
   feed: DonorFeed | null;
+  /** Ouvre la modale de don (Stripe Checkout), la même que le mur. */
+  onSupport: () => void;
 }): JSX.Element {
   const contributors = credits?.contributors ?? [];
   const recent = feed?.recent ?? [];
@@ -2400,17 +2365,18 @@ function CreditsPanel({
         <h2><OwlMark class="v-mark" />{t('credits.title')}</h2>
         <p class="v-intro">{t('credits.intro')}</p>
       </div>
+      {/* Un seul canal : Stripe Checkout, par la même modale que le mur.
+          Ko-fi et GitHub Sponsors n'ont jamais été ouverts (06/11/2026) ;
+          leurs liens restent possibles dans la modale si credits.json les
+          renseigne un jour, jamais un bouton « bientôt » mort ici. */}
       <div class="v-donate-row">
-        <DonateButton
-          url={credits?.koFiUrl}
-          icon={<IconHeart />}
-          label={t('credits.kofi')}
-        />
-        <DonateButton
-          url={credits?.gitHubSponsorsUrl}
-          icon={<IconGitHub />}
-          label={t('credits.github')}
-        />
+        <button
+          class="v-donate"
+          disabled={!credits?.donorApiUrl}
+          onClick={onSupport}
+        >
+          <IconHeart /> {t('wall.cta')}
+        </button>
       </div>
       <div class="v-cred-grid">
         {/* carte Mur des soutiens */}
@@ -2509,6 +2475,14 @@ function ExportQueue({
   );
 }
 
+/**
+ * Arrêts repris tout seuls à l'ouverture d'un onglet Discord : pas de bouton
+ * « Reprendre » (il n'aurait rien à émettre sans onglet).
+ */
+function isAutoResumeStop(item: QueueItemView): boolean {
+  return item.stopReason === 'no-tab' || item.stopReason === 'no-client';
+}
+
 function TaskCard({
   item,
   expanded,
@@ -2541,7 +2515,7 @@ function TaskCard({
         <div class="v-bar">
           <i class={done ? 'ok' : ''} style={`width:${done ? 100 : pct}%`} />
         </div>
-        {item.status === 'paused' && (
+        {item.status === 'paused' && !isAutoResumeStop(item) && (
           <span class="v-exp" onClick={onResume}>{t('queue.resume')}</span>
         )}
         {item.status === 'failed' && (
@@ -2569,6 +2543,12 @@ function TaskCard({
           {expanded ? t('queue.details_hide') : t('queue.details_show')}
         </span>
       </div>
+      {item.status === 'paused' && item.stopReason && (
+        /* Arrêt net : on dit pourquoi, et quoi faire. Sans ça l'utilisateur
+           ne voyait que « EN PAUSE » et relançait aussitôt, ce qui est
+           exactement le geste à éviter après un refus de Discord. */
+        <div class="v-stop-reason" role="status">{t(`stop.${item.stopReason}`)}</div>
+      )}
       {done && (
         <div class="v-thanks" onClick={onSupport}>
           <IconHeart />{t('credits.thanks')}

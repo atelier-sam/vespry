@@ -10,17 +10,38 @@ Quatre contextes d'exécution, à ne jamais confondre :
 - `src/background/service-worker.ts` — éphémère (MV3 le tue). Routage de
   messages + ouverture d'onglets UNIQUEMENT. Aucun travail long ici.
 - `src/content/discord-bridge.ts` — content script monde MAIN. Patche fetch/XHR
-  pour capter l'en-tête `authorization`. Le jeton n'est plus dans localStorage
-  depuis fin 2023.
+  pour capter l'en-tête `authorization` et les en-têtes du client, et installe
+  `rest-bridge.ts` : le SEUL endroit d'où partent les requêtes vers l'API
+  Discord (module REST du client, repli `fetch` même-origine).
 - `src/content/content-script.ts` — content script monde ISOLATED. Relais du
-  jeton + injection de l'overlay (Shadow DOM).
+  jeton, relais des requêtes REST (`rest-relay.ts`, MessageChannel privé vers
+  le monde MAIN) + injection de l'overlay (Shadow DOM).
 - `src/offscreen/offscreen.html` + `offscreen.ts` — document offscreen
-  invisible et tab-indépendant. C'est ICI que tourne le moteur d'export et la
-  reprise (`VespryController`), jamais dans le service worker.
+  invisible. C'est ICI que tourne le moteur d'export et la reprise
+  (`VespryController`), jamais dans le service worker. Il n'émet AUCUNE
+  requête Discord : il les confie à l'onglet (cf. ci-dessous).
+
+### Chemin d'une requête (export discret, 06/11/2026)
+
+`DiscordApi` → `Pacer.run(kind)` (rythme) → `RelayTransport` →
+`chrome.runtime.sendMessage` → SW `relayRestToTab` (`background/tab-relay.ts`)
+→ `chrome.tabs.sendMessage` → content script `RestPortClient` → MessageChannel
+→ MAIN `rest-bridge`. Sur Firefox, l'event page héberge le contrôleur et
+appelle `relayRestToTab` directement. Garde : `no-direct-api.test.ts` refuse
+toute URL d'API Discord hors de `rest-bridge.ts`.
+
+Pourquoi : depuis mars 2026 Discord sanctionne les exports par compte
+utilisateur ; une requête émise depuis `chrome-extension://`, sans cookies ni
+en-têtes du client, est une signature. Ne JAMAIS réintroduire d'appel direct.
 
 ## Moteur (`src/engine/`)
 
 - `discord-api.ts` — client API Discord. Dérivé de Discrub Classic (MIT).
+  N'émet plus rien lui-même : passe par un `DiscordTransport` (`transport.ts`,
+  liste blanche des routes) et un `Pacer`.
+- `pacer.ts` — SEUL maître de la cadence (file unique, délais aléatoires,
+  pauses en horloge murale, plafond de session). Crans `discreet` (défaut) /
+  `normal`, réglage persisté sous `vespry.pace`.
 - `auth.ts` — capture/stockage du jeton de session.
 - `checkpoint-store.ts` — IndexedDB, source de vérité (runs/channels/messages/assets).
 - `export-runner.ts` — orchestrateur checkpoint-natif.
@@ -29,8 +50,10 @@ Quatre contextes d'exécution, à ne jamais confondre :
 ## Service de dons (`donor-service/`)
 
 Cloudflare Worker indépendant (sa propre `package.json`, hors build Vite).
-Ingère les webhooks Ko-Fi et GitHub Sponsors, range les soutiens dans D1, et
-expose `GET /donors`. L'extension consomme ce flux pour le footer « Mur des
+Crée les sessions Stripe Checkout (`POST /checkout`), ingère le webhook Stripe
+signé, range les soutiens dans D1, et expose `GET /donors`. Stripe est le SEUL
+canal ouvert (06/11/2026) ; les routes Ko-Fi / GitHub Sponsors sont dormantes,
+et `credits.json` ne doit jamais porter une URL de don qui ne mène nulle part. L'extension consomme ce flux pour le footer « Mur des
 soutiens ». Le fetch passe par l'offscreen (la CSP de Discord bloque l'overlay).
 Contrat partagé : `donor-service/src/donors.ts` ↔ `src/donors.ts`.
 

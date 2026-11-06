@@ -15,7 +15,7 @@ import type {
   SelectionZone,
   ZoneMode,
 } from './engine/checkpoint-types';
-import type { RawChannel, RawGuild, RawMessage, Snowflake } from './engine/types';
+import type { RawChannel, RawGuild, RawMessage, Snowflake, StopKind } from './engine/types';
 import type { DonorFeed } from './donors';
 import type { PaceMode } from './engine/pacer';
 
@@ -92,6 +92,11 @@ export interface QueueItemView {
   reactions: number;
   log: string[];
   zipReady: boolean;
+  /**
+   * Raison d'un arrêt net (run en pause) : l'UI affiche le message traduit
+   * `stop.<kind>`. Absent pour une pause ordinaire.
+   */
+  stopReason?: StopKind;
 }
 
 /**
@@ -116,6 +121,8 @@ export interface PurgeItemView {
   failed: number;
   /** Lignes de la mini-console (plafonné à 250). */
   log: string[];
+  /** Raison d'un arrêt net (cf. `QueueItemView.stopReason`). */
+  stopReason?: StopKind;
 }
 
 export interface VespryState {
@@ -126,6 +133,8 @@ export interface VespryState {
   queue: QueueItemView[];
   /** File des opérations de purge en cours / terminées (Phase 2). */
   purgeQueue: PurgeItemView[];
+  /** Rythme appliqué par le moteur (réglage « Rythme »). */
+  pace: PaceMode;
 }
 
 // --- commandes vue → offscreen (via le service worker) ---

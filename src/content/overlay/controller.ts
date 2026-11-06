@@ -74,6 +74,8 @@ export interface QueueItem {
   /** Lignes de la mini-console (plafonné). */
   log: string[];
   zip: Blob | null;
+  /** Raison d'un arrêt net, lue dans le checkpoint (cf. `ExportRun.stopReason`). */
+  stopReason?: StopKind;
 }
 
 /**
@@ -302,7 +304,7 @@ export class VespryController {
       await this.store.init();
       for (const run of await this.store.listRuns()) {
         this.queue.push(
-          await this.rebuildItem(run.id, run.guildName, run.guildId, run.status),
+          await this.rebuildItem(run.id, run.guildName, run.guildId, run.status, run.stopReason),
         );
       }
     } catch (e) {
@@ -414,6 +416,7 @@ export class VespryController {
       const run = await this.store.getRun(item.runId);
       if (run?.stopReason === 'no-tab' || run?.stopReason === 'no-client') {
         item.status = 'in_progress';
+        delete item.stopReason;
         pushLog(item.log, `${clock()}  ↻ onglet Discord ouvert — reprise`);
       }
     }
@@ -575,6 +578,12 @@ export class VespryController {
       }
     }
     return anyOk ? total : null;
+  }
+
+  /** Comptage mis en cache par le pré-vol, s'il est encore frais. */
+  private cachedCount(guildId: string, channelId: string): number | null | undefined {
+    const hit = this.estimateCache.get(`${guildId}:${channelId}`);
+    return hit && Date.now() - hit.at < ESTIMATE_TTL_MS ? hit.count : undefined;
   }
 
   /**
@@ -935,6 +944,7 @@ export class VespryController {
     const item = this.queue.find((q) => q.runId === runId);
     if (item && item.status === 'paused') {
       item.status = 'in_progress';
+      delete item.stopReason;
       this.notify();
       void this.drain();
     }
@@ -978,6 +988,7 @@ export class VespryController {
         reactions: q.reactions,
         log: q.log,
         zipReady: q.zip !== null,
+        ...(q.status === 'paused' && q.stopReason ? { stopReason: q.stopReason } : {}),
       })),
       purgeQueue: this.purgeQueue.map((p): PurgeItemView => ({
         runId: p.runId,
@@ -991,7 +1002,9 @@ export class VespryController {
         // On exclut `pending` du broadcast — c'est de la donnée interne
         // (potentiellement des milliers d'ids) sans valeur pour l'UI.
         log: p.log,
+        ...(p.stopReason ? { stopReason: p.stopReason } : {}),
       })),
+      pace: this.pacer.currentMode,
     };
   }
 
@@ -1032,7 +1045,11 @@ export class VespryController {
           this.notify();
         },
       },
-      { channelConcurrency: 1, preciseCount: this.pacer.currentMode === 'normal' },
+      {
+        channelConcurrency: 1,
+        preciseCount: this.pacer.currentMode === 'normal',
+        knownCount: (channelId) => this.cachedCount(item.guildId, channelId),
+      },
     );
     let status: RunStatus;
     try {
@@ -1049,6 +1066,17 @@ export class VespryController {
       );
     }
     item.status = status;
+    if (status === 'paused') {
+      // Arrêt net (refus Discord, onglet fermé…) : la raison est dans le
+      // checkpoint. Sans cette ligne l'utilisateur ne voyait que « EN PAUSE ».
+      const run = await this.store.getRun(item.runId);
+      if (run?.stopReason) {
+        item.stopReason = run.stopReason;
+        pushLog(item.log, `${clock()}  ⏸ ${stopMessage(run.stopReason)}`);
+      }
+    } else {
+      delete item.stopReason;
+    }
     if (status === 'completed' || status === 'partial') {
       const { blob } = await packageRun(this.store, item.runId);
       item.zip = blob;
@@ -1067,6 +1095,7 @@ export class VespryController {
     guildName: string,
     guildId: string,
     status: RunStatus,
+    stopReason?: StopKind,
   ): Promise<QueueItem> {
     const channels = await this.store.getChannels(runId);
     const assets = await this.store.getAssets(runId);
@@ -1094,6 +1123,7 @@ export class VespryController {
       reactions: 0,
       log: [`${clock()}  ↻ run repris depuis le checkpoint`],
       zip: null,
+      ...(status === 'paused' && stopReason ? { stopReason } : {}),
     };
   }
 }

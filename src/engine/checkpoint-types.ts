@@ -263,8 +263,10 @@ export interface ExportRun {
    * Raison d'un arrêt net (`paused`) venu de Discord ou du transport. Seuls
    * `no-tab` / `no-client` sont repris automatiquement à l'ouverture d'un
    * onglet Discord ; les autres attendent un geste de l'utilisateur.
+   * Remis à `undefined` à chaque reprise, pour qu'une raison périmée ne
+   * survive pas à une pause ultérieure d'une autre nature (quota).
    */
-  stopReason?: StopKind;
+  stopReason?: StopKind | undefined;
 }
 
 /** Progression d'un salon dans un run — porte le curseur de reprise. */

@@ -614,6 +614,25 @@ describe('ExportRunner — arrêts nets (export discret)', () => {
     expect(paginated).toBe(false);
   });
 
+  it('reprise après un arrêt net : la raison périmée est effacée', async () => {
+    const runId = await planGuildExport(store, { id: 'g1', name: 'G' }, [channel], OPTS);
+    let fail = true;
+    const api = {
+      getMessages: async (): Promise<RawMessage[]> => {
+        if (fail) throw new DiscordApiError('no-tab', 0, 'onglet fermé');
+        return [];
+      },
+      downloadAsset: async (): Promise<Blob | null> => null,
+      ...NULL_SEARCH,
+    } as unknown as DiscordApi;
+    const runner = new ExportRunner(api, store);
+    expect(await runner.run(runId)).toBe('paused');
+    expect((await store.getRun(runId))?.stopReason).toBe('no-tab');
+    fail = false;
+    expect(await runner.run(runId)).toBe('completed');
+    expect((await store.getRun(runId))?.stopReason).toBeUndefined();
+  });
+
   it('arrêt net sur une réaction → remonte (pas avalé), curseur intact', async () => {
     const runId = await planGuildExport(
       store, { id: 'g1', name: 'G' }, [channel], { ...OPTS, includeReactionUsers: true },
@@ -643,5 +662,25 @@ describe('ExportRunner — arrêts nets (export discret)', () => {
     const runId = await planGuildExport(store, { id: 'g1', name: 'G' }, [CH], OPTS);
     await new ExportRunner(api, store, {}, { preciseCount: false }).run(runId);
     expect(searches).toBe(1);
+  });
+
+  it('comptage connu du pré-vol : aucune recherche refaite au lancement', async () => {
+    const CH: RawChannel = { id: 'c1', type: 0, name: 'petit' };
+    const CH2: RawChannel = { id: 'c2', type: 0, name: 'inconnu' };
+    const searched: string[] = [];
+    const api = {
+      getMessages: async () => [],
+      downloadAsset: async () => null,
+      searchMessageCount: async (_g: string, id: string) => { searched.push(id); return 42; },
+      searchDmMessageCount: async () => null,
+    } as unknown as DiscordApi;
+    const runId = await planGuildExport(store, { id: 'g1', name: 'G' }, [CH, CH2], OPTS);
+    const events: ProgressSnapshot[] = [];
+    await new ExportRunner(api, store, { onProgress: (e) => events.push(e) }, {
+      preciseCount: false,
+      knownCount: (id) => (id === 'c1' ? 120 : undefined),
+    }).run(runId);
+    expect(searched).toEqual(['c2']);
+    expect(events[0]?.estimatedMessagesTotal).toBe(162);
   });
 });

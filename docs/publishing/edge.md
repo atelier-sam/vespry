@@ -78,20 +78,22 @@ Avant chaque soumission, vérifier :
        blobs during long exports of large servers (tens of thousands of
        messages, gigabytes of media). The unlimited quota prevents the
        browser from evicting checkpoints mid-export. »
-     - `tabs` : « Opens or activates the Discord tab from the popup. Used
-       only to navigate the user to https://discord.com/ — no inspection
-       of other tabs, no tab content read. »
-     - `offscreen` : « Hosts the export engine in an offscreen document so
-       it survives the user closing the Discord tab. The engine is a
-       resumable, checkpoint-driven worker — it must outlive any single
-       tab. No remote code, no tab content access. »
+     - `tabs` : « Finds the open discord.com tab to hand it the export's
+       requests (they are sent from the page, through the Discord client),
+       and opens or activates that tab from the popup. No other tab is
+       inspected, no other tab content read. »
+     - `offscreen` : « Hosts the export engine (checkpoints, resume, zip
+       packaging) in an offscreen document so a reload of the Discord page
+       does not interrupt the export. The engine never calls Discord's API
+       itself. No remote code, no tab content access. »
      - `notifications` : « Notifies the user when an export finishes, is
        paused, or fails. Local notifications only, no remote service. »
      - `downloads` : « Triggers the final .zip download once the export is
        complete. The user remains in control of the destination folder. »
      - `host_permissions: https://discord.com/*, https://*.discord.com/*` :
-       « Reads the user's Discord session and calls the official Discord
-       API to fetch their own messages. No third-party endpoint. »
+       « Injects the export panel and the request relay into the
+       discord.com page; requests to fetch the user's own messages are sent
+       from that page by the Discord client. No third-party endpoint. »
      - `host_permissions: https://cdn.discordapp.com/*, https://media.discordapp.net/*` :
        « Downloads media (images, videos, attachments) referenced by the
        exported messages so the offline archive remains viewable without

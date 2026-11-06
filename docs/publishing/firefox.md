@@ -69,7 +69,9 @@ Vérifications manuelles à faire avant chaque release :
 1. Le bouton « Vespry » apparaît sur https://discord.com.
 2. La connexion à un serveur exporte un salon test.
 3. Pendant un export long, ouvrir et fermer un autre onglet — l'export
-   doit continuer (port `vespry-keepalive` actif).
+   doit continuer (port `vespry-keepalive` actif). Fermer l'onglet Discord :
+   l'export passe en pause (« Ouvre Discord… ») et repart seul à la
+   réouverture.
 4. Tester la pause / reprise (déconnexion / reconnexion Discord).
 5. Le téléchargement du zip fonctionne (popup d'option Firefox).
 

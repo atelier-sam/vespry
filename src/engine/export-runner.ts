@@ -112,6 +112,13 @@ export interface RunnerOptions {
    * plus : chaque appel `search` compte dans la signature). Défaut true.
    */
   preciseCount?: boolean;
+  /**
+   * Comptage déjà connu d'un salon (pré-vol de l'UI, mis en cache) :
+   * `undefined` = inconnu, à chercher ; `null` = recherche déjà tentée et
+   * échouée. Évite de refaire au lancement la recherche que le pré-vol vient
+   * de faire : chaque appel `search` compte dans le volume vu par Discord.
+   */
+  knownCount?: (channelId: Snowflake) => number | null | undefined;
 }
 
 /**
@@ -231,7 +238,7 @@ export class ExportRunner {
   async run(runId: string): Promise<RunStatus> {
     const run = await this.store.getRun(runId);
     if (!run) throw new Error(`run introuvable : ${runId}`);
-    await this.store.patchRun(runId, { status: 'in_progress' });
+    await this.store.patchRun(runId, { status: 'in_progress', stopReason: undefined });
 
     const channels = await this.store.getChannels(runId);
     const pending = channels.filter(
@@ -655,7 +662,8 @@ export class ExportRunner {
         ? this.api.searchDmMessageCount(ch.channelId, maxId, minId)
         : this.api.searchMessageCount(guildId, ch.channelId, maxId, minId);
 
-    const initial = await search();
+    const known = this.options.knownCount?.(ch.channelId);
+    const initial = known !== undefined ? known : await search();
     if (initial === null) return null;
     // Seuil 8000 = plafond ES Discord. < 8000 = valeur exacte, on s'arrête.
     if (initial < SEARCH_CAP_THRESHOLD) return initial;

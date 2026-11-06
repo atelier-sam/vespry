@@ -102,12 +102,12 @@ const NOW = Date.parse('2026-06-07T12:00:00Z');
 const DONORS: DonorFeed = {
   total: 14,
   weekCount: 3,
-  nextMilestone: { key: 'm.silver', seq: 25, remaining: 11 },
+  nextMilestone: { key: 'm.twentyfive', seq: 25, remaining: 11 },
   recent: [
     { seq: 14, source: 'stripe', name: 'Camille', message: 'Merci, ça m\'a sauvé une archive entière !', createdAt: NOW - 1 * DAY, milestone: null },
     { seq: 13, source: 'github', name: 'Léa', message: null, createdAt: NOW - 2 * DAY, milestone: null },
     { seq: 12, source: 'kofi', name: 'Dywan', message: 'Pépite open source 💜', createdAt: NOW - 3 * DAY, milestone: null },
-    { seq: 10, source: 'stripe', name: 'Marin', message: null, createdAt: NOW - 6 * DAY, milestone: 'm.bronze' },
+    { seq: 10, source: 'stripe', name: 'Marin', message: null, createdAt: NOW - 6 * DAY, milestone: 'm.ten' },
     { seq: 9, source: 'github', name: null, message: null, createdAt: NOW - 9 * DAY, milestone: null },
   ],
 };
@@ -140,16 +140,54 @@ const QUEUE: QueueItemView[] = [
   },
 ];
 
+/* ── Scène « discret » (?scene=discret) : run arrêté net par Discord ────
+ * Sert aux captures de revue du chantier export discret (capture-discret.mjs),
+ * jamais aux captures du store (capture.mjs charge la page sans paramètre). */
+
+const SCENE = new URLSearchParams(location.search).get('scene');
+if (SCENE === 'discret') {
+  QUEUE.unshift({
+    runId: 'run_demo_stopped',
+    guildName: 'Les Trailers',
+    status: 'paused',
+    triggeredBy: 'user',
+    channelsTotal: 6,
+    channelsDone: 2,
+    messages: 3_120,
+    estimatedMessages: 9_400,
+    assetsByKind: { image: 88, video: 3, audio: 0, file: 9 },
+    reactions: 0,
+    log: [
+      '10:02:11  → #sorties…',
+      '10:04:40  ✓ #sorties — 1 902 msg',
+      '10:05:02  → #matos…',
+      '10:06:31  ⏸ Discord a refusé une requête (vérification ou blocage)',
+    ],
+    zipReady: false,
+    stopReason: 'refused',
+  });
+}
+
 /* ── Contrôleur factice : même surface que RemoteController ────────────── */
 
 const noop = (): void => {};
+const listeners = new Set<() => void>();
 const FakeController = {
   ready: true,
   error: null as string | null,
   guilds: GUILDS,
   queue: QUEUE,
   purgeQueue: [] as unknown[],
-  subscribe(_cb: () => void): () => void { return noop; },
+  pace: 'discreet' as 'discreet' | 'normal',
+  async setPace(mode: 'discreet' | 'normal'): Promise<boolean> {
+    FakeController.pace = mode;
+    for (const l of listeners) l();
+    return true;
+  },
+  subscribe(cb: () => void): () => void {
+    listeners.add(cb);
+    return () => { listeners.delete(cb); };
+  },
   async init(): Promise<void> {},
   async loadChannels(guildId: string): Promise<RawChannel[]> { return channelsFor(guildId); },
   async estimate(): Promise<number | null> { return 12_480; },

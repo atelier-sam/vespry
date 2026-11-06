@@ -18,6 +18,7 @@ import {
 import type { MediaSelection } from '../engine/checkpoint-types';
 import type { RawChannel, RawGuild, RawMessage, Snowflake } from '../engine/types';
 import type { DonorFeed } from '../donors';
+import type { PaceMode } from '../engine/pacer';
 
 const EMPTY: VespryState = {
   ready: false,
@@ -26,6 +27,7 @@ const EMPTY: VespryState = {
   guilds: [],
   queue: [],
   purgeQueue: [],
+  pace: 'discreet',
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -110,6 +112,7 @@ export class RemoteController {
   get queue(): QueueItemView[] { return this.state.queue; }
   /** File des opérations de purge (Phase 2). */
   get purgeQueue(): PurgeItemView[] { return this.state.purgeQueue; }
+  get pace(): PaceMode { return this.state.pace ?? 'discreet'; }
 
   subscribe(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -255,6 +258,16 @@ export class RemoteController {
       messageIds,
     });
     return r.purgeRunId ?? null;
+  }
+
+  /**
+   * Change le rythme. Le service worker (ou le background Firefox) le
+   * persiste sous `vespry.pace` et le moteur l'applique dès la requête
+   * suivante ; l'état diffusé ensuite porte le nouveau `pace`.
+   */
+  async setPace(mode: PaceMode): Promise<boolean> {
+    const r = await this.send({ cmd: 'set-pace', mode });
+    return r.ok !== false;
   }
 
   private async send(command: VespryCommand): Promise<CommandResponse> {

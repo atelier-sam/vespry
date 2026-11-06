@@ -16,7 +16,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-informational)](package.json)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-173%20passants-brightgreen)](src/engine)
+[![Tests](https://img.shields.io/badge/tests-258%20passants-brightgreen)](src/engine)
 [![Crowdin](https://badges.crowdin.net/vespry/localized.svg)](https://crowdin.com/project/vespry)
 
 <br/>
@@ -60,11 +60,40 @@ Vespry prend le problème à l'envers :
   et à mesure.
 - Si l'export s'interrompt (onglet fermé, plantage, coupure), **il reprend
   depuis le dernier point enregistré** au lieu de tout recommencer.
-- L'export tourne **dans un contexte séparé** de l'onglet Discord : tu peux
-  fermer l'onglet, il continue.
+- Si tu fermes l'onglet Discord, l'export **se met en pause** et repart tout
+  seul à la prochaine ouverture de Discord.
 
 Le résultat est une **archive `.zip` locale**, lisible par un humain comme par
 un agent IA, que personne d'autre que toi ne voit passer.
+
+<br/>
+
+---
+
+## 🕵️ Mode discret
+
+Depuis mars 2026, Discord sanctionne des comptes qui exportent leur historique
+avec des outils tiers : déconnexion forcée, restriction temporaire, suspension
+en cas de récidive. Les outils qui interrogent l'API depuis leur propre
+contexte, vite et en parallèle, ont une signature facile à repérer.
+
+Vespry est construit pour ne pas en avoir :
+
+- **Les requêtes partent de ton onglet discord.com**, par le client Discord
+  lui-même : mêmes en-têtes, mêmes cookies, même version d'API. Aucune requête
+  vers Discord ne part de l'extension.
+- **Rythme humain par défaut** : un salon à la fois, 1,5 à 3,5 s entre deux
+  lectures, une pause d'une dizaine de minutes toutes les 40 à 50 min, un
+  plafond de requêtes par session. Un mode Normal, deux fois plus rapide, existe
+  derrière un avertissement.
+- **Arrêt au premier signal** : vérification, refus, page de protection ou
+  demande de ralentir, l'export se met en pause et dit pourquoi. Pas de
+  relance en rafale.
+- **Moins de requêtes** : le comptage préalable est fait une fois, en série, et
+  réutilisé au lancement.
+
+Ça réduit le risque, ça ne le supprime pas : aucun outil ne peut garantir que
+ton compte ne sera pas sanctionné. Vespry te le dit avant ton premier export.
 
 <br/>
 
@@ -77,8 +106,9 @@ un agent IA, que personne d'autre que toi ne voit passer.
 <td width="50%" valign="top">
 
 ### 🛡️ Increvable
-Reprise après interruption, écriture par lots sur disque, export hors de
-l'onglet Discord. Le cœur du projet, couvert par les tests.
+Reprise après interruption, écriture par lots sur disque, reprise
+automatique à la réouverture de Discord. Le cœur du projet, couvert par les
+tests.
 
 </td>
 <td width="50%" valign="top">
@@ -101,7 +131,7 @@ prête à être donnée à un agent IA ou à ton second cerveau.
 
 ### 🗓️ Planifiable
 Backup incrémental récurrent d'un serveur, quotidien ou hebdomadaire, via
-`chrome.alarms`. Vespry se réveille seul et te notifie.
+`chrome.alarms`. Il part dès qu'un onglet Discord est ouvert et te notifie.
 
 </td>
 </tr>
@@ -158,7 +188,9 @@ envoyé. Jauge de force. Avertissement clair : zip irrécupérable si oublié.
 plutôt qu'un seul fichier ingérable.
 
 **Suppression bulk** — Triple garde-fou : sélection requise, modal de
-confirmation, saisie du mot « SUPPRIMER ». Sérielle (≈ 5/s), idempotente.
+confirmation, saisie du mot « SUPPRIMER ». Rappel du risque à chaque fois, un
+message toutes les 3 à 6 s en rythme Discret, arrêt au premier refus de
+Discord. Idempotente.
 
 **File d'export increvable** — Avancement par tâche, console temps réel, badge
 de pourcentage sur l'icône. Reprise d'un export interrompu.
@@ -221,6 +253,8 @@ Rejouable depuis le popup.
 |---|:--:|:--:|:--:|:--:|
 | Type | extension | appli desktop | extension | extension |
 | **Reprise après interruption** | ✅ | ❌ | ❌ | ❌ |
+| **Requêtes émises par le client Discord** | ✅ | ❌ | ❌ | ? |
+| **Rythme humain + arrêt au premier refus** | ✅ | ❌ | partiel | ? |
 | **Export incrémental natif** | ✅ | partiel | ❌ | ⚠️ payant |
 | **Plusieurs formats en un export** | ✅ | ❌ | ❌ | ❌ |
 | Formats JSON / HTML / CSV / TXT | ✅ | ✅ | JSON/HTML/CSV | variable |
@@ -303,7 +337,7 @@ télécharges. Rien ne transite par un serveur Vespry.
 
 | Flux | Quand | Ce qui sort |
 |---|---|---|
-| **Discord API** | toujours | ton jeton de session (comme ton client Discord) |
+| **Discord API** | toujours | émis depuis ton onglet discord.com, par le client Discord |
 | **Stripe** | don uniquement | rien tant que tu ne donnes pas |
 | **Worker dons** | affichage du mur | lecture seule, agrégats publics |
 | **GitHub** | check de version | IP / User-Agent (requête anonyme) |
@@ -341,13 +375,13 @@ npm install
 npm run dev              # build watch + HMR Chrome
 npm run build            # build Chrome production -> dist/
 npm run build:firefox    # build Firefox production -> dist-firefox/
-npm run test             # tests unitaires (vitest) — 173 tests
+npm run test             # tests unitaires (vitest) — 258 tests
 npm run typecheck        # vérification de types
 npm run firefox:lint     # web-ext lint pour AMO
 ```
 
 TypeScript strict, Manifest V3, Vite, Preact. Le moteur d'export est couvert
-par **173 tests unitaires** : reprise d'un export interrompu, streaming
+par **258 tests unitaires** : reprise d'un export interrompu, streaming
 AES-256, suppression idempotente.
 
 <br/>
@@ -358,8 +392,9 @@ AES-256, suppression idempotente.
 
 Gratuit et open source, sans publicité. Si l'outil t'a rendu service :
 
-- [**GitHub Sponsors**](https://github.com/sponsors/atelier-sam) — récurrent.
-- Bouton **Soutenir** dans l'extension — don ponctuel via Stripe.
+- Bouton **Soutenir Vespry** dans l'extension (en bas du panneau, ou onglet
+  Soutiens) — don ponctuel par Stripe Checkout, du montant de ton choix. Tu
+  choisis d'apparaître avec un prénom et un mot, ou de rester anonyme.
 
 Les soutiens publics apparaissent sur le **mur des soutiens** de l'extension.
 
@@ -380,9 +415,11 @@ Les soutiens publics apparaissent sur le **mur des soutiens** de l'extension.
 ## ⚠️ Avertissement
 
 Automatiser un compte utilisateur Discord est contraire aux conditions
-d'utilisation de Discord. Cet outil est fourni tel quel ; utilise-le sur tes
-propres données, à tes risques. Au premier export, Vespry affiche un
-avertissement que tu dois valider.
+d'utilisation de Discord, et Discord sanctionne des comptes qui exportent leur
+historique depuis mars 2026. Le [mode discret](#️-mode-discret) réduit ce
+risque sans le supprimer. Cet outil est fourni tel quel ; utilise-le sur tes
+propres données, à tes risques. Au premier export, Vespry affiche cet
+avertissement dans ta langue et tu dois le valider.
 
 Vespry n'est pas affilié à Discord Inc. « Discord » et son logo sont des
 marques de Discord Inc.

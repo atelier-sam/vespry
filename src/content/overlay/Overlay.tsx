@@ -676,6 +676,16 @@ export function Overlay({
           <OwlMark class="v-mark" />
           <strong>{noToken ? t('overlay.no_token_title') : t('overlay.engine_error')}</strong>
           <span>{noToken ? t('overlay.no_token_body') : controller.error}</span>
+          {controller.halt && (
+            // Refus de Discord au chargement de la session : verrou posé, rien
+            // ne repart seul (Codex H3). Seul ce bouton relance.
+            <div class="v-stop-reason v-halt" role="alert">
+              <span>{t(`stop.${controller.halt}`)}</span>
+              <button class="v-btn v-btn--ghost" onClick={() => { void controller.clearHalt(); }}>
+                {t('queue.resume')}
+              </button>
+            </div>
+          )}
           <div style="display:flex;gap:10px;margin-top:8px">
             {noToken && (
               <button

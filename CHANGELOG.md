@@ -39,7 +39,9 @@ lots : une signature facile à repérer. Ce chantier la retire.
   grisés jusqu'au clic sur « Reprendre ».
 - **Une tâche ne change jamais de compte** : chaque requête est liée au
   compte du début ; un onglet Discord connecté à un autre compte est ignoré,
-  et sans onglet du bon compte la tâche s'arrête.
+  et sans onglet du bon compte la tâche s'arrête. Le compte se vérifie au
+  moment même de l'envoi, sur l'en-tête qui part ; un jeton illisible
+  n'émet rien.
 - **Jamais deux fois la même requête** : ni repli `fetch` après un appel du
   client resté sans réponse lisible, ni nouvel essai sur un autre onglet
   quand la liaison casse après l'envoi.
@@ -49,7 +51,11 @@ lots : une signature facile à repérer. Ce chantier la retire.
   réécrirait (`\`, `%2e`, `%2f`, `%5c`) est refusé. Avant, le segment
   emoji d'une réaction permettait d'atteindre une autre route.
 - Canal privé entre la page et l'extension : la première poignée de main
-  gagne, et aucun script de la page ne reçoit le port.
+  gagne, et aucun script de la page ne reçoit le port, même s'il remplace
+  les primitives du navigateur après le chargement. Un `ready` en retard
+  n'est plus perdu (le canal restait coupé jusqu'au rechargement).
+- Un refus de Discord pendant le chargement de la session pose aussi le
+  verrou : l'écran le dit, et seul « Reprendre » relance.
 - Arrêt « Discord pas encore chargé » : la reprise automatique arrive
   vraiment (l'onglet se ré-annonce), et le bouton « Reprendre » reste là.
 - Export planifié en attente : tiré une seule fois même si deux onglets

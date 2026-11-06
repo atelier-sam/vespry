@@ -191,25 +191,37 @@ const waitForClientHeaders = (): Promise<boolean> =>
   waitForHeaders(['authorization', 'x-super-properties']);
 
 /**
- * Vérifie que la session de la page est celle du compte attendu (Codex H5).
- * Le compte se lit dans l'en-tête `authorization` que le client envoie
- * lui-même : tant qu'il n'en a envoyé aucun, on ne sait pas qui est connecté,
- * on n'émet pas. Un jeton de forme inconnue (Discord en changerait le
- * format) laisse passer une LECTURE, jamais une suppression.
+ * Compte lié (relecture Codex H5) : la session de la page doit être celle du
+ * compte attendu. Le compte se lit dans l'en-tête `authorization` que le
+ * client envoie lui-même.
+ *
+ * Deux temps, et c'est voulu :
+ *  - `waitForAccount` (asynchrone) attend que le client ait émis un en-tête ;
+ *  - `accountRefusal` (SYNCHRONE) compare juste avant l'émission, sur la
+ *    valeur même qui part, sans aucun `await` entre la comparaison et l'envoi.
+ * La re-relecture Codex a montré qu'un contrôle fait AVANT une autre attente
+ * laissait passer un changement de compte survenu pendant cette attente.
+ *
+ * Un jeton de forme inconnue ne permet pas de savoir qui est connecté : rien
+ * ne part (`wrong-account`, qui devient un arrêt expliqué côté moteur). Si
+ * Discord change un jour ce format, Vespry s'arrête net au lieu de risquer
+ * d'émettre sous le mauvais compte.
  */
-async function checkAccount(req: TransportRequest): Promise<RestRelayReply | null> {
+async function waitForAccount(req: TransportRequest): Promise<RestRelayReply | null> {
   if (req.asUser === undefined) return null;
-  if (!(await waitForHeaders(['authorization']))) {
-    return {
-      ok: false,
-      failure: 'no-client-headers',
-      message: 'Compte de la page inconnu : le client Discord n\'a encore rien émis',
-    };
-  }
-  const id = userIdFromToken(captured.get('authorization'));
+  if (await waitForHeaders(['authorization'])) return null;
+  return {
+    ok: false,
+    failure: 'no-client-headers',
+    message: 'Compte de la page inconnu : le client Discord n\'a encore rien émis',
+  };
+}
+
+function accountRefusal(req: TransportRequest, authorization: string | undefined): RestRelayReply | null {
+  if (req.asUser === undefined) return null;
+  const id = userIdFromToken(authorization);
   if (id === null) {
-    if (req.method === 'GET') return null;
-    return { ok: false, failure: 'bridge', message: 'Compte de la page illisible : suppression refusée' };
+    return { ok: false, failure: 'wrong-account', message: 'Compte de la page illisible : rien n\'est émis' };
   }
   if (id !== req.asUser) {
     return { ok: false, failure: 'wrong-account', message: 'Onglet connecté à un autre compte' };
@@ -230,6 +242,9 @@ async function sendViaFetch(
   }
   const headers: Record<string, string> = {};
   for (const [k, v] of captured) headers[k] = v;
+  // Contrôle sur l'en-tête qui part réellement, sans attente avant l'envoi.
+  const refused = accountRefusal(req, headers.authorization);
+  if (refused) return refused;
   let res: Response;
   try {
     res = await nativeFetch.call(window, `/api/v9${req.path}`, {
@@ -265,11 +280,14 @@ export async function executeRest(nativeFetch: typeof fetch, raw: unknown): Prom
   dbg.__vespryRestCount = (dbg.__vespryRestCount ?? 0) + 1;
   dbg.__vespryHeadersSeen = [...captured.keys()].join(',');
   try {
-    const refused = await checkAccount(req);
-    if (refused) return refused;
+    const unknown = await waitForAccount(req);
+    if (unknown) return unknown;
     // Le repli fetch ne sert QUE si le module est introuvable AVANT l'appel.
     const rest = findClientRest();
     if (rest) {
+      // Synchrone jusqu'à l'appel du module (cf. accountRefusal).
+      const refused = accountRefusal(req, captured.get('authorization'));
+      if (refused) return refused;
       const res = await sendViaClient(rest, req);
       dbg.__vespryRestVia = 'client';
       if (res === 'indeterminate') {
@@ -299,6 +317,84 @@ function isPortRequest(v: unknown): v is PortRequest {
   return !!v && typeof v === 'object' && typeof (v as { id?: unknown }).id === 'number';
 }
 
+// Primitives du navigateur figées au chargement du module (relecture Codex,
+// re-relecture H1). Ce module est évalué à `document_start`, avant tout
+// script de la page. Un script hostile chargé ensuite peut remplacer
+// `Event.prototype.stopImmediatePropagation`, le getter `MessageEvent#data`
+// ou `MessagePort#postMessage` : chacune de ces méthodes reçoit en `this`
+// l'événement de la poignée de main ou le port lui-même, donc lui livrerait
+// le canal. On appelle les originaux. Le repli sur la méthode de l'objet ne
+// sert qu'aux objets non natifs (doublures de test, événement fabriqué par
+// la page avec ses propres champs, qui ne transporte que SON port).
+type Getter<T> = (this: unknown) => T;
+function nativeGetter<T>(proto: object | undefined, name: string): Getter<T> | null {
+  if (!proto) return null;
+  const d = Object.getOwnPropertyDescriptor(proto, name);
+  return typeof d?.get === 'function' ? (d.get as Getter<T>) : null;
+}
+const NATIVE = {
+  stopImmediate: typeof Event !== 'undefined' ? Event.prototype.stopImmediatePropagation : null,
+  data: nativeGetter<unknown>(typeof MessageEvent !== 'undefined' ? MessageEvent.prototype : undefined, 'data'),
+  ports: nativeGetter<readonly MessagePort[]>(typeof MessageEvent !== 'undefined' ? MessageEvent.prototype : undefined, 'ports'),
+  source: nativeGetter<unknown>(typeof MessageEvent !== 'undefined' ? MessageEvent.prototype : undefined, 'source'),
+  post: typeof MessagePort !== 'undefined' ? MessagePort.prototype.postMessage : null,
+  onmessage: typeof MessagePort !== 'undefined'
+    ? (Object.getOwnPropertyDescriptor(MessagePort.prototype, 'onmessage')?.set ?? null)
+    : null,
+};
+
+function readField<T>(native: Getter<T> | null, obj: object, key: string): T {
+  if (native) {
+    try {
+      return Reflect.apply(native, obj, []);
+    } catch {
+      // objet non natif : on lit son champ
+    }
+  }
+  return (obj as Record<string, T>)[key] as T;
+}
+
+function stopEvent(event: Event): void {
+  if (NATIVE.stopImmediate) {
+    try {
+      Reflect.apply(NATIVE.stopImmediate, event, []);
+      return;
+    } catch {
+      // objet non natif
+    }
+  }
+  event.stopImmediatePropagation();
+}
+
+function postTo(port: MessagePort, msg: unknown): void {
+  if (NATIVE.post) {
+    try {
+      Reflect.apply(NATIVE.post, port, [msg]);
+      return;
+    } catch {
+      // objet non natif
+    }
+  }
+  port.postMessage(msg);
+}
+
+function listenOn(port: MessagePort, handler: (ev: MessageEvent) => void): void {
+  if (NATIVE.onmessage) {
+    try {
+      Reflect.apply(NATIVE.onmessage, port, [handler]);
+      return;
+    } catch {
+      // objet non natif
+    }
+  }
+  port.onmessage = handler;
+}
+
+async function serve(port: MessagePort, nativeFetch: typeof fetch, id: number, req: unknown): Promise<void> {
+  const reply = await executeRest(nativeFetch, req);
+  postTo(port, { id, reply });
+}
+
 /**
  * Écoute la poignée de main du content script. La PREMIÈRE acceptée gagne,
  * pour toute la vie de la page (relecture Codex H1, 06/11/2026).
@@ -315,6 +411,12 @@ function isPortRequest(v: unknown): v is PortRequest {
  *  - première acceptée = définitive : une poignée de main postée ensuite par
  *    la page ne remplace pas le canal du moteur. L'ancienne règle (« la
  *    dernière gagne ») laissait n'importe quel script s'y substituer.
+ *  - les primitives du navigateur touchées par ce chemin sont figées au
+ *    chargement (cf. `NATIVE`) : les remplacer après coup ne livre pas le port.
+ * Limite assumée : un script qui contrôle la page peut de toute façon
+ * réécrire le module REST du client Discord ou `Response#text`, donc fausser
+ * ce que Discord montre, à Vespry comme à l'utilisateur. Ce qu'on garantit,
+ * c'est qu'il ne prend pas le canal du moteur.
  * Coût assumé : après une mise à jour de l'extension, l'onglet Discord doit
  * être rechargé (Chrome ne réinjecte rien de toute façon ; un navigateur qui
  * réinjecterait verrait l'ancien bridge garder la main). Le moteur reçoit
@@ -323,23 +425,21 @@ function isPortRequest(v: unknown): v is PortRequest {
 export function installRestServer(nativeFetch: typeof fetch): void {
   let active: MessagePort | null = null;
   window.addEventListener('message', (event: MessageEvent) => {
-    if (event.source !== window) return;
-    const data = event.data as { source?: unknown } | null;
-    if (!data || data.source !== REST_HANDSHAKE_SOURCE) return;
+    if (readField(NATIVE.source, event, 'source') !== window) return;
+    const data = readField<unknown>(NATIVE.data, event, 'data') as { source?: unknown } | null;
+    if (!data || typeof data !== 'object' || data.source !== REST_HANDSHAKE_SOURCE) return;
     // Toute poignée de main s'arrête ici, acceptée ou non : un script de la
     // page ne doit jamais recevoir un port destiné au bridge.
-    event.stopImmediatePropagation();
+    stopEvent(event);
     if (active) return;
-    const port = event.ports[0];
+    const port = readField<readonly MessagePort[]>(NATIVE.ports, event, 'ports')[0];
     if (!port) return;
     active = port;
-    port.onmessage = (msg: MessageEvent) => {
-      if (!isPortRequest(msg.data)) return;
-      const { id, req } = msg.data;
-      void executeRest(nativeFetch, req).then((reply) => {
-        port.postMessage({ id, reply });
-      });
-    };
-    port.postMessage({ ready: true });
+    listenOn(port, (msg: MessageEvent) => {
+      const body = readField<unknown>(NATIVE.data, msg, 'data');
+      if (!isPortRequest(body)) return;
+      void serve(port, nativeFetch, body.id, body.req);
+    });
+    postTo(port, { ready: true });
   }, true);
 }

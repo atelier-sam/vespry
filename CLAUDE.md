@@ -40,7 +40,9 @@ Trois invariants du chemin (relecture Codex, 06/11/2026), chacun testé :
   toute tâche. Seul un geste de l'utilisateur le lève (`clearHalt`, bouton
   Reprendre). Ne jamais appeler `clearHalt` depuis un chemin automatique.
 - **Compte lié** (`bindUser` → `asUser`) : la page refuse d'émettre si sa
-  session est celle d'un autre compte (`wrong-account`).
+  session est celle d'un autre compte, ou illisible (`wrong-account`). La
+  comparaison est SYNCHRONE avec l'envoi : aucun `await` entre les deux.
+  Un refus pendant le chargement de session pose `sessionHalt` (contrôleur).
 - **Pas de double envoi** : une requête peut-être partie (délai dépassé,
   liaison rompue après remise, module client sans statut) n'est jamais
   rejouée ; elle devient un arrêt.

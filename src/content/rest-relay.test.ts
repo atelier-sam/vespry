@@ -66,6 +66,32 @@ describe('RestPortClient (ISOLATED ↔ MAIN)', () => {
     expect(await c.request(REQ)).toMatchObject({ ok: false, failure: 'bridge' });
   });
 
+  // Re-relecture Codex : MAIN garde la PREMIÈRE poignée de main. Si son
+  // `ready` arrive après le délai, le canal ne doit pas être perdu.
+  it('ready en retard : la requête échoue (no-tab), le canal accepté sert à la suivante', async () => {
+    let accepted: MessagePort | null = null;
+    let handshakes = 0;
+    const target = {
+      postMessage: (_msg: unknown, _origin: string, transfer?: Transferable[]) => {
+        handshakes += 1;
+        const port = transfer?.[0] as MessagePort;
+        opened.push(port);
+        if (accepted) return; // première gagne, les suivantes sont ignorées
+        accepted = port;
+        port.onmessage = (ev: MessageEvent) => {
+          const { id } = ev.data as { id: number };
+          port.postMessage({ id, reply: { ok: true, res: { status: 204, body: null, nonJson: false } } });
+        };
+        setTimeout(() => port.postMessage({ ready: true }), 250); // page lente
+      },
+    } as unknown as Pick<Window, 'postMessage'>;
+    const c = new RestPortClient({ target, origin: 'https://discord.com', handshakeTimeoutMs: 100 });
+    expect(await c.request(REQ)).toMatchObject({ ok: false, failure: 'no-tab' });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await c.request(REQ)).toMatchObject({ ok: true });
+    expect(handshakes).toBe(1);
+  });
+
   it('route hors liste blanche refusée côté ISOLATED aussi', async () => {
     const main = fakeMain(() => ({ ok: true, res: { status: 200, body: {}, nonJson: false } }));
     const c = new RestPortClient({ target: main.target, origin: 'https://discord.com' });

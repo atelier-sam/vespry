@@ -32,6 +32,7 @@ import {
 import {
   DiscordApiError,
   isAutoResumable,
+  isLatchingStop,
   isStopError,
   stopMessage,
   type DiscordErrorKind,
@@ -251,6 +252,13 @@ export class VespryController {
   api: DiscordApi | null = null;
   /** Raison du dernier échec de chargement de session. */
   private sessionFailure: DiscordErrorKind | null = null;
+  /**
+   * Verrou d'arrêt posé PENDANT un chargement de session (relecture Codex
+   * H3, 06/11/2026). Le client API d'un chargement raté est jeté : sans ce
+   * champ, son verrou partait avec lui et la prochaine annonce d'onglet
+   * réémettait vers Discord sans geste de l'utilisateur.
+   */
+  private sessionHalt: StopKind | null = null;
   /** Jeton vu lors de la dernière tentative : on ne réessaie qu'à son changement. */
   private lastTriedToken: string | null = null;
   private readonly estimateCache = new Map<string, { count: number | null; at: number }>();
@@ -339,6 +347,12 @@ export class VespryController {
    * de SIGNAL de reconnexion (cf. `watchForSession`).
    */
   private async loadSession(): Promise<boolean> {
+    if (this.sessionHalt) {
+      // Discord a refusé un chargement précédent : rien ne repart avant le
+      // bouton Reprendre (`clearHalt`), sauf reconnexion (cf. watchForSession).
+      this.sessionFailure = this.sessionHalt;
+      return false;
+    }
     const api = new DiscordApi({
       transport: this.transport,
       pacer: this.pacer,
@@ -361,6 +375,7 @@ export class VespryController {
       this.currentUser = null;
       this.guilds = [];
       this.sessionFailure = e instanceof DiscordApiError ? e.kind : 'unknown';
+      if (isLatchingStop(e)) this.sessionHalt = e.kind as StopKind;
       // `no-token` = « ouvre Discord et connecte-toi » côté vues.
       this.error = e instanceof DiscordApiError
         && (e.kind === 'auth' || e.kind === 'no-tab' || e.kind === 'no-client')
@@ -391,6 +406,10 @@ export class VespryController {
         const tokenChanged = token !== null && token !== this.lastTriedToken;
         const noTabYet = this.sessionFailure === 'no-tab';
         if (!tokenChanged && !noTabYet) continue;
+        // Un NOUVEAU jeton = l'utilisateur s'est reconnecté : c'est son geste,
+        // il lève un verrou de session (`auth` seulement : un captcha ou une
+        // page de protection ne se lève pas en se reconnectant).
+        if (tokenChanged && this.sessionHalt === 'auth') this.sessionHalt = null;
         this.lastTriedToken = token;
         if (await this.loadSession()) {
           this.notify();
@@ -955,7 +974,8 @@ export class VespryController {
    */
   get halt(): StopKind | null {
     const k = this.api?.haltedBy?.kind;
-    return k === 'auth' || k === 'refused' || k === 'blocked' || k === 'rate-limited' ? k : null;
+    if (k === 'auth' || k === 'refused' || k === 'blocked' || k === 'rate-limited') return k;
+    return this.sessionHalt;
   }
 
   /**
@@ -964,10 +984,26 @@ export class VespryController {
    * reprend tout seul : les tâches en pause restent en pause.
    */
   clearHalt(): void {
-    if (!this.api?.haltedBy) return;
-    this.api.clearHalt();
+    if (!this.api?.haltedBy && !this.sessionHalt) return;
+    this.api?.clearHalt();
+    const reload = this.sessionHalt !== null && !this.api;
+    this.sessionHalt = null;
     recordEvent('info', 'Verrou d\'arrêt levé par l\'utilisateur');
     this.notify();
+    // Verrou posé au chargement de la session : le geste relance ce chargement.
+    if (reload) void this.retrySession();
+  }
+
+  /** Recharge la session après un geste de l'utilisateur. */
+  private async retrySession(): Promise<void> {
+    this.lastTriedToken = await this.readToken();
+    if (await this.loadSession()) {
+      this.notify();
+      void this.drain();
+      return;
+    }
+    this.notify();
+    if (!this.sessionHalt) void this.watchForSession();
   }
 
   /** Reprend une tâche mise en pause (après reconnexion à Discord). */

@@ -23,6 +23,7 @@ import {
 /** Attente maximale de la poignée de main avec le monde MAIN. */
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const HANDSHAKE_RETRY_MS = 500;
+const MAX_CANDIDATES = 100;
 
 interface Pending {
   resolve(reply: RestRelayReply): void;
@@ -42,6 +43,10 @@ export class RestPortClient {
   private connecting: Promise<MessagePort | null> | null = null;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  /** Tentatives de poignée de main encore à l'écoute (jusqu'au premier `ready`). */
+  private readonly candidates = new Set<MessagePort>();
+  /** Appels de `connect()` en attente du canal. */
+  private readonly waiters = new Set<(port: MessagePort | null) => void>();
 
   constructor(private readonly env: RelayEnv) {}
 
@@ -59,27 +64,32 @@ export class RestPortClient {
   private handshake(): Promise<MessagePort | null> {
     const limit = this.env.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS;
     return new Promise((resolve) => {
-      let done = false;
-      // Toutes les tentatives restent à l'écoute jusqu'au premier `ready` :
-      // le bridge garde la PREMIÈRE poignée de main reçue (cf. rest-bridge,
-      // H1) ; fermer une tentative avant sa réponse perdrait le seul canal
-      // qu'il acceptera.
-      const tries: MessagePort[] = [];
+      let settled = false;
+      const finish = (port: MessagePort | null): void => {
+        if (settled) return;
+        settled = true;
+        clearInterval(retry);
+        clearTimeout(giveUp);
+        resolve(port);
+      };
+      this.waiters.add(finish);
       const attempt = (): void => {
-        if (done) return;
+        if (settled || this.port) return;
         const channel = new MessageChannel();
         const local = channel.port1;
-        tries.push(local);
+        this.candidates.add(local);
+        // Sans bridge du tout (extension mise à jour, onglet pas rechargé),
+        // chaque requête ajoute des tentatives : on borne, en fermant les
+        // plus anciennes (un `ready` légitime arrive en millisecondes).
+        while (this.candidates.size > MAX_CANDIDATES) {
+          const oldest = this.candidates.values().next().value as MessagePort;
+          oldest.close();
+          this.candidates.delete(oldest);
+        }
         local.onmessage = (ev: MessageEvent) => {
           const data = ev.data as { ready?: unknown } | null;
-          if (done || !data || data.ready !== true) return;
-          done = true;
-          clearInterval(retry);
-          clearTimeout(giveUp);
-          for (const p of tries) if (p !== local) p.close();
-          local.onmessage = (msg: MessageEvent) => this.onReply(msg.data);
-          this.port = local;
-          resolve(local);
+          if (!data || data.ready !== true) return;
+          this.adopt(local);
         };
         this.env.target.postMessage(
           { source: REST_HANDSHAKE_SOURCE },
@@ -88,15 +98,31 @@ export class RestPortClient {
         );
       };
       const retry = setInterval(attempt, HANDSHAKE_RETRY_MS);
+      // Délai dépassé : CETTE requête échoue (`no-tab`), mais les tentatives
+      // restent à l'écoute. Le bridge garde la PREMIÈRE poignée de main reçue
+      // (cf. rest-bridge, H1) : fermer une tentative acceptée dont le `ready`
+      // arrive en retard perdrait le seul canal qu'il acceptera, jusqu'au
+      // rechargement de l'onglet (re-relecture Codex, 06/11/2026).
       const giveUp = setTimeout(() => {
-        if (done) return;
-        done = true;
-        clearInterval(retry);
-        for (const p of tries) p.close();
-        resolve(null);
+        this.waiters.delete(finish);
+        finish(null);
       }, limit);
       attempt();
     });
+  }
+
+  /** Premier `ready` reçu : ce port devient LE canal, les autres tentatives se ferment. */
+  private adopt(local: MessagePort): void {
+    if (this.port) {
+      if (local !== this.port) local.close();
+      return;
+    }
+    this.port = local;
+    local.onmessage = (msg: MessageEvent) => this.onReply(msg.data);
+    for (const p of this.candidates) if (p !== local) p.close();
+    this.candidates.clear();
+    for (const w of this.waiters) w(local);
+    this.waiters.clear();
   }
 
   private onReply(data: unknown): void {

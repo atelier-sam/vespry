@@ -235,17 +235,89 @@ describe('rest-bridge — compte lié', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  it('jeton de forme inconnue : lecture permise, suppression refusée', async () => {
+  it('jeton de forme inconnue : compte invérifiable, RIEN n\'est émis (ni lecture, ni suppression)', async () => {
     const del = clientWith();
     bridge.observeClientHeader('authorization', 'nouveau-format-sans-point');
     const read = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
       method: 'GET', path: '/users/@me/guilds', asUser: ME,
     });
-    expect(read).toMatchObject({ ok: true });
+    expect(read).toMatchObject({ ok: false, failure: 'wrong-account' });
     const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
       method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
     });
-    expect(r).toMatchObject({ ok: false, failure: 'bridge' });
+    expect(r).toMatchObject({ ok: false, failure: 'wrong-account' });
     expect(del).not.toHaveBeenCalled();
+  });
+
+  it('sans lien de compte (premier /users/@me) : un jeton illisible n\'empêche pas la lecture', async () => {
+    clientWith();
+    bridge.observeClientHeader('authorization', 'nouveau-format-sans-point');
+    const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, { method: 'GET', path: '/users/@me' });
+    expect(r).toMatchObject({ ok: true });
+  });
+
+  // Re-relecture Codex H5 : le compte change PENDANT l'attente des en-têtes
+  // de la voie fetch. Le contrôle se fait sur l'en-tête qui part, pas avant.
+  it('voie fetch : compte basculé pendant l\'attente des en-têtes → wrong-account, aucun fetch', async () => {
+    vi.useFakeTimers();
+    const fetchSpy = vi.fn(async () => new Response('{}', { status: 200 }));
+    bridge.observeClientHeader('authorization', tokenOf(ME));
+    const p = bridge.executeRest(fetchSpy as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    // L'utilisateur change de compte dans la page : le client émet sous B.
+    bridge.observeClientHeader('authorization', tokenOf(OTHER));
+    bridge.observeClientHeader('x-super-properties', 'e30=');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await p).toMatchObject({ ok: false, failure: 'wrong-account' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('voie fetch, contrôle positif : même compte → émis avec CE jeton', async () => {
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 204 }));
+    bridge.observeClientHeader('authorization', tokenOf(ME));
+    bridge.observeClientHeader('x-super-properties', 'e30=');
+    const r = await bridge.executeRest(fetchSpy as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
+    });
+    expect(r).toMatchObject({ ok: true });
+    const init = (fetchSpy.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>).authorization).toBe(tokenOf(ME));
+  });
+});
+
+// Re-relecture Codex H1 : un script de la page qui remplace les primitives du
+// navigateur APRÈS le chargement du bridge ne reçoit pas le port.
+describe('rest-bridge — primitives figées au chargement', () => {
+  it('postMessage remplacé par la page : jamais appelé, le bridge répond quand même', async () => {
+    let listener: ((e: MessageEvent) => void) | null = null;
+    win.addEventListener = ((_t: string, cb: (e: MessageEvent) => void) => { listener = cb; }) as FakeWin['addEventListener'];
+    bridge.installRestServer(neverFetch as unknown as typeof fetch);
+
+    const original = MessagePort.prototype.postMessage;
+    const leaked: unknown[] = [];
+    MessagePort.prototype.postMessage = function (this: MessagePort, ...args: unknown[]) {
+      leaked.push(this);
+      return Reflect.apply(original, this, args);
+    } as typeof original;
+    try {
+      const ch = new MessageChannel();
+      const ready = new Promise((resolve) => { ch.port1.onmessage = (ev) => resolve(ev.data); });
+      let stopped = false;
+      (listener as unknown as (e: MessageEvent) => void)({
+        source: win,
+        data: { source: REST_HANDSHAKE_SOURCE },
+        ports: [ch.port2],
+        stopImmediatePropagation: () => { stopped = true; },
+      } as unknown as MessageEvent);
+      expect(await ready).toEqual({ ready: true });
+      expect(stopped).toBe(true);
+      expect(leaked).toEqual([]);
+      ch.port1.close();
+      ch.port2.close();
+    } finally {
+      MessagePort.prototype.postMessage = original;
+    }
   });
 });

@@ -5,11 +5,11 @@ import {
 import type { RawMessage } from './types';
 
 const ctx: ExportContext = {
-  guildName: 'Groupe avec Sora',
-  guildId: '1467246938280952014',
-  channelName: 'questions-sam',
-  channel: { id: 'c1', name: 'questions-sam', type: 0 },
-  urlToPath: new Map([['https://cdn/x.png', 'media/questions-sam/x.png']]),
+  guildName: 'Studio Kitsune',
+  guildId: '1100000000000000001',
+  channelName: 'croquis',
+  channel: { id: 'c1', name: 'croquis', type: 0 },
+  urlToPath: new Map([['https://cdn/x.png', 'media/croquis/x.png']]),
   labels: ENGLISH_LABELS,
 };
 
@@ -30,7 +30,7 @@ function msg(over: Partial<RawMessage> = {}): RawMessage {
 describe('toTxt', () => {
   it('inclut en-tête, auteur, date et contenu', () => {
     const out = toTxt(ctx, [msg()]);
-    expect(out).toContain('Groupe avec Sora · #questions-sam');
+    expect(out).toContain('Studio Kitsune · #croquis');
     expect(out).toContain('1 messages');
     expect(out).toContain('Sam');
     expect(out).toContain('bonjour');
@@ -42,7 +42,7 @@ describe('toTxt', () => {
       reactions: [{ count: 3, emoji: { id: null, name: '👍' } }],
     })]);
     expect(out).toContain('photo.png');
-    expect(out).toContain('média'.length > 0 ? 'media/questions-sam/x.png' : '');
+    expect(out).toContain('média'.length > 0 ? 'media/croquis/x.png' : '');
     expect(out).toContain('👍 ×3');
   });
 
@@ -76,7 +76,7 @@ describe('toCsv', () => {
     const out = toCsv(ctx, [msg({
       attachments: [{ id: 'a', filename: 'x.png', size: 1, url: 'https://cdn/x.png', proxy_url: '' }],
     })]);
-    expect(out).toContain('media/questions-sam/x.png');
+    expect(out).toContain('media/croquis/x.png');
   });
 });
 
@@ -84,7 +84,7 @@ describe('toHtml', () => {
   it('produit un document HTML complet', () => {
     const out = toHtml(ctx, [msg()]);
     expect(out.startsWith('<!doctype html>')).toBe(true);
-    expect(out).toContain('#questions-sam');
+    expect(out).toContain('#croquis');
     expect(out).toContain('bonjour');
   });
 
@@ -107,7 +107,7 @@ describe('toHtml', () => {
         url: 'https://cdn/x.png', proxy_url: '', content_type: 'image/png',
       }],
     })]);
-    expect(out).toContain('../media/questions-sam/x.png');
+    expect(out).toContain('../media/croquis/x.png');
     expect(out).toContain('<img');
   });
 

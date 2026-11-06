@@ -11,8 +11,8 @@ import { FakeTransport, instantPacer, ok } from '../../engine/test-fakes';
 import type { TransportRequest, TransportResponse } from '../../engine/transport';
 
 const ME = { id: '123456789012345678', username: 'moi' };
-const GUILD = { id: '1467246938280952014', name: 'Groupe avec Sora' };
-const CHANNEL = { id: '1473255276269408327', name: 'logs-agents', type: 0, guild_id: GUILD.id };
+const GUILD = { id: '1100000000000000001', name: 'Studio Kitsune' };
+const CHANNEL = { id: '1100000000000000002', name: 'annonces', type: 0, guild_id: GUILD.id };
 
 function route(req: TransportRequest): TransportResponse {
   const p = req.path;

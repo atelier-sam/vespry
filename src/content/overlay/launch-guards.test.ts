@@ -13,9 +13,9 @@ describe('createLatestGate — la réponse d\'un serveur quitté est ignorée', 
       }, ms));
     };
     const a = load(['channel-guide'], 30); // ancien serveur, réponse lente
-    const b = load(['note-importante'], 5);
+    const b = load(['annonces'], 5);
     await Promise.all([a, b]);
-    expect(shown).toEqual(['note-importante']);
+    expect(shown).toEqual(['annonces']);
   });
 
   it('une seule demande reste valable', () => {

@@ -30,7 +30,7 @@ async function seedCompletedRun(password?: string): Promise<string> {
   await store.init();
   const run: ExportRun = {
     id,
-    guildId: '1467246938280952014',
+    guildId: '1100000000000000001',
     guildName: 'Groupe Test',
     status: 'completed',
     options: {
@@ -46,15 +46,15 @@ async function seedCompletedRun(password?: string): Promise<string> {
   };
   await store.putRun(run);
   await store.putChannel({
-    runId: id, channelId: '1473255276269408327', name: 'général', category: null, type: 0,
+    runId: id, channelId: '1100000000000000002', name: 'général', category: null, type: 0,
     status: 'done', cursor: null, messageCount: 1,
   });
   await store.appendMessages([{
     runId: id,
-    channelId: '1473255276269408327',
-    messageId: '1473255276269408400',
+    channelId: '1100000000000000002',
+    messageId: '1100000000000000003',
     message: {
-      id: '1473255276269408400', type: 0, channel_id: '1473255276269408327',
+      id: '1100000000000000003', type: 0, channel_id: '1100000000000000002',
       author: { id: 'u1', username: 'sam' }, content: 'bonjour',
       timestamp: '2026-09-05T12:34:00.000Z', attachments: [], embeds: [],
     },

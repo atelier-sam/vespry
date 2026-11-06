@@ -6,8 +6,12 @@
  * - Ouvre une issue GitHub pré-remplie, ou copie le rapport si le dépôt n'est
  *   pas encore configuré.
  *
- * IMPORTANT — vie privée : le rapport n'inclut JAMAIS le jeton Discord ni le
- * contenu des messages. Uniquement du contexte technique.
+ * IMPORTANT — vie privée : le rapport part dans un ticket GitHub PUBLIC. Il
+ * n'inclut jamais le jeton Discord ni le contenu des messages, et TOUT son
+ * texte passe par `ReportRedactor` avant d'être ouvert : noms de serveur et
+ * de salon, identifiants Discord, liens et adresses e-mail sont masqués.
+ * Avant le 06/11/2026, le résumé et le journal d'une tâche échouée y
+ * mettaient le nom du serveur et des salons en clair.
  */
 import { GITHUB_REPO, getVersion } from './version';
 import { getDetectedUnknowns } from './engine/schema-watch';
@@ -37,7 +41,54 @@ export function installGlobalHandlers(context: string): void {
  * Assemble un rapport Markdown. `extraLines` = lignes spécifiques (ex. le
  * journal d'une tâche d'export échouée).
  */
-export function buildReport(summary: string, extraLines: string[] = []): string {
+/**
+ * Masque ce qui identifie l'utilisateur dans une ligne de rapport. Une même
+ * instance sert tout un rapport : un salon garde le même alias d'une ligne à
+ * l'autre (`#salon-1`), pour que le journal reste lisible.
+ */
+export class ReportRedactor {
+  private readonly names: string[];
+  private readonly channels = new Map<string, string>();
+
+  /** `names` : noms à masquer partout (le nom du serveur, en pratique). */
+  constructor(names: readonly string[] = []) {
+    // Trop court, un nom masquerait des morceaux de mots ordinaires.
+    this.names = [...new Set(names.map((n) => n.trim()).filter((n) => n.length >= 3))]
+      .sort((a, b) => b.length - a.length);
+  }
+
+  private alias(channel: string): string {
+    let a = this.channels.get(channel);
+    if (!a) {
+      a = `salon-${this.channels.size + 1}`;
+      this.channels.set(channel, a);
+    }
+    return a;
+  }
+
+  line(input: string): string {
+    let s = input;
+    for (const n of this.names) s = s.split(n).join('[serveur]');
+    // Salons : les formes écrites par le journal d'export (`formatLog`) —
+    // « → #nom… », « #nom · », « ✓ #nom — ». Un nom de fil peut contenir
+    // des espaces : on s'arrête au séparateur, pas à l'espace. Le `#` doit
+    // ouvrir un mot : les titres Markdown du rapport (`### Journal`) restent.
+    s = s.replace(/(?<=^|\s)#(?![#\s])(.+?)(?=…| · | — |$)/gu, (_m, name: string) => `#${this.alias(name)}`);
+    // Liens http(s) (pièces jointes signées, API…) ; les chemins
+    // chrome-extension:// et moz-extension:// des piles restent lisibles.
+    s = s.replace(/\bhttps?:\/\/[^\s)\]'"`<>]+/giu, '<lien>');
+    s = s.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, '<e-mail>');
+    // Identifiants Discord (snowflakes, 17 à 20 chiffres).
+    s = s.replace(/(?<!\d)\d{17,20}(?!\d)/gu, '<id>');
+    return s;
+  }
+}
+
+export function buildReport(
+  summary: string,
+  extraLines: string[] = [],
+  redactor: ReportRedactor = new ReportRedactor(),
+): string {
   const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
   const lines = [
     `**Résumé** : ${summary}`,
@@ -70,11 +121,15 @@ export function buildReport(summary: string, extraLines: string[] = []): string 
       '```',
     );
   }
-  lines.push(
+  // Le masquage couvre TOUT le texte (résumé, journal, erreurs captées),
+  // puis le pied, écrit après coup, dit ce qui a été retiré.
+  const body = lines.join('\n').split('\n').map((l) => redactor.line(l));
+  body.push(
     '',
-    '_Rapport généré par Vespry. Ne contient ni jeton Discord ni contenu de messages._',
+    '_Rapport généré par Vespry. Ne contient ni jeton Discord ni contenu de messages ;'
+      + ' noms de serveur et de salons, identifiants, liens et e-mails masqués. Relis-le avant de l\'envoyer : le ticket est public._',
   );
-  return lines.join('\n');
+  return body.join('\n');
 }
 
 /**
@@ -85,12 +140,15 @@ export function buildReport(summary: string, extraLines: string[] = []): string 
 export async function reportProblem(
   summary: string,
   extraLines: string[] = [],
+  /** Noms à masquer en plus des règles générales (nom du serveur). */
+  names: readonly string[] = [],
 ): Promise<'issue' | 'clipboard'> {
-  const body = buildReport(summary, extraLines);
+  const redactor = new ReportRedactor(names);
+  const body = buildReport(summary, extraLines, redactor);
   if (GITHUB_REPO) {
     const url =
       `https://github.com/${GITHUB_REPO}/issues/new`
-      + `?title=${encodeURIComponent(`[bug] ${summary}`)}`
+      + `?title=${encodeURIComponent(`[bug] ${redactor.line(summary)}`)}`
       + `&body=${encodeURIComponent(body)}`;
     window.open(url, '_blank', 'noopener');
     return 'issue';

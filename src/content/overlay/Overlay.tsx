@@ -2570,8 +2570,9 @@ function TaskCard({
         )}
         {item.status === 'failed' && (
           <ReportLink
-            summary={`Export échoué : ${item.guildName}`}
+            summary="Export échoué"
             log={item.log}
+            names={[item.guildName]}
             label={t('report.this')}
           />
         )}
@@ -2638,15 +2639,18 @@ function ReportLink({
   summary,
   log,
   label,
+  names = [],
 }: {
   summary: string;
   log: string[];
   label: string;
+  /** Noms à masquer dans le rapport public (nom du serveur). */
+  names?: readonly string[];
 }): JSX.Element {
   const [done, setDone] = useState<'' | 'issue' | 'clipboard'>('');
   function go(e: MouseEvent): void {
     e.stopPropagation();
-    void reportProblem(summary, log).then((r) => {
+    void reportProblem(summary, log, names).then((r) => {
       setDone(r);
       setTimeout(() => setDone(''), 3000);
     });

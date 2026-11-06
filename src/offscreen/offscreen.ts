@@ -39,14 +39,10 @@ async function handle(command: VespryCommand): Promise<CommandResponse> {
       return { ok: true, state: controller.toState() };
     case 'load-channels':
       return { ok: true, channels: await controller.loadChannels(command.guildId) };
-    case 'estimate':
-      return {
-        ok: true,
-        estimatedTotal: await controller.estimateMessages(
-          command.guildId,
-          command.channelIds,
-        ),
-      };
+    case 'estimate': {
+      const est = await controller.estimateMessages(command.guildId, command.channelIds);
+      return { ok: true, estimatedTotal: est.total, estimateStop: est.stop };
+    }
     case 'list-runs':
       return { ok: true, runs: await controller.listRuns() };
     case 'delete-run':
@@ -124,6 +120,9 @@ async function handle(command: VespryCommand): Promise<CommandResponse> {
       return { ok: true };
     case 'set-pace':
       controller.setPace(command.mode);
+      return { ok: true, state: controller.toState() };
+    case 'clear-halt':
+      controller.clearHalt();
       return { ok: true, state: controller.toState() };
   }
 }

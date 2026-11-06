@@ -71,7 +71,10 @@ export function PurgeModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [item, onClose]);
 
-  const canConfirm = typed.trim() === confirmWord && !submitting && purgeId === null;
+  // Verrou d'arrêt posé (Discord a refusé) : pas de suppression tant que
+  // l'utilisateur n'a pas levé le verrou depuis le bandeau du panneau.
+  const canConfirm = typed.trim() === confirmWord && !submitting && purgeId === null
+    && controller.halt === null;
   const total = messageIds.length;
 
   async function onConfirm(): Promise<void> {
@@ -116,6 +119,9 @@ export function PurgeModal({
               <p class="v-modal-risk"><b>{t('tos.sanctions')}</b></p>
               <p class="v-modal-risk">{t('purge.risk')} {t('tos.no_guarantee')}</p>
               <PaceSetting controller={controller} />
+              {controller.halt && (
+                <p class="v-modal-risk v-stop-reason" role="alert">{t(`stop.${controller.halt}`)}</p>
+              )}
               <p class="v-modal-confirm-help">
                 {t('purge.confirm_help', { word: confirmWord })}
               </p>

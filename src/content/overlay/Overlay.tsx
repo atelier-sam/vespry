@@ -604,10 +604,14 @@ export function Overlay({
     // mise en cache 30 min côté moteur. Spinner sur le bouton pendant l'attente.
     setEstimating(true);
     try {
-      const total = await controller.estimate(
+      const { total, stop } = await controller.estimate(
         activeGuild.id,
         picked.map((c) => c.id),
       );
+      // Discord a refusé pendant l'estimation (ou le moteur était déjà
+      // arrêté) : on ne lance RIEN. Le bandeau d'arrêt, au-dessus du bouton,
+      // dit pourquoi (relecture Codex H4 : l'export partait quand même).
+      if (stop) return;
       // Seuil : 10 000 messages — ordre de grandeur où la durée se voit
       // (100 lots au rythme Discret, plus les pauses régulières). `null` (toutes les searches ont échoué) →
       // on continue sans avertir, l'utilisateur le verra au pré-comptage
@@ -1143,10 +1147,22 @@ export function Overlay({
             )}
           </div>
           <div class="v-side-foot">
+            {controller.halt && (
+              /* Verrou d'arrêt du moteur : Discord a refusé, plus rien ne part
+                 pour aucune tâche. Lancer est grisé tant que l'utilisateur n'a
+                 pas décidé, en connaissance de cause, de réessayer. */
+              <div class="v-stop-reason v-halt" role="alert">
+                <span>{t(`stop.${controller.halt}`)}</span>
+                <button class="v-btn v-btn--ghost" onClick={() => { void controller.clearHalt(); }}>
+                  {t('queue.resume')}
+                </button>
+              </div>
+            )}
             <button
               class="v-btn v-tuto-launch"
               disabled={
                 estimating
+                || controller.halt !== null
                 || (selected.size === 0 && manualSel.size === 0)
               }
               onClick={() => { void enqueue(); }}
@@ -2476,11 +2492,13 @@ function ExportQueue({
 }
 
 /**
- * Arrêts repris tout seuls à l'ouverture d'un onglet Discord : pas de bouton
- * « Reprendre » (il n'aurait rien à émettre sans onglet).
+ * Arrêt repris tout seul à l'ouverture d'un onglet Discord : pas de bouton
+ * « Reprendre » (il n'aurait rien à émettre sans onglet). `no-client` garde
+ * son bouton : l'onglet est là, et si la reprise automatique tarde (client
+ * jamais prêt), l'utilisateur ne doit pas rester sans issue (Codex M4).
  */
 function isAutoResumeStop(item: QueueItemView): boolean {
-  return item.stopReason === 'no-tab' || item.stopReason === 'no-client';
+  return item.stopReason === 'no-tab';
 }
 
 function TaskCard({

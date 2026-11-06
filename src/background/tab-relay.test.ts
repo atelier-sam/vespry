@@ -56,4 +56,23 @@ describe('tab-relay', () => {
     const a = api([{ id: 1 }], async () => ({ ok: false, failure: 'rejected', message: 'x' }));
     expect(await relayRestToTab(a, REQ)).toMatchObject({ ok: false, failure: 'rejected' });
   });
+
+  // Relecture Codex M1 : une rupture APRÈS remise ne se rejoue pas ailleurs.
+  it('liaison rompue après remise → timeout, PAS d\'essai sur un autre onglet', async () => {
+    const a = api([{ id: 1, active: true }, { id: 2 }], async (id) => {
+      if (id === 1) throw new Error('The message port closed before a response was received.');
+      return OK;
+    });
+    expect(await relayRestToTab(a, REQ)).toMatchObject({ ok: false, failure: 'timeout' });
+    expect(a.sent).toEqual([1]);
+  });
+
+  // Relecture Codex H5.
+  it('onglet d\'un autre compte → suivant ; aucun du bon compte → wrong-account', async () => {
+    const wrong = { ok: false, failure: 'wrong-account', message: 'x' };
+    const a = api([{ id: 1, active: true }, { id: 2 }], async (id) => (id === 1 ? wrong : OK));
+    expect(await relayRestToTab(a, REQ)).toEqual(OK);
+    const b = api([{ id: 1, active: true }], async () => wrong);
+    expect(await relayRestToTab(b, REQ)).toMatchObject({ ok: false, failure: 'wrong-account' });
+  });
 });

@@ -9,10 +9,12 @@
  * on interroge les onglets à chaque requête. Ordre d'essai : l'onglet actif,
  * puis les autres du plus récent au plus ancien. Un onglet qui ne répond pas
  * (pas de content script, bridge absent) cède la place au suivant ; un
- * onglet qui a REÇU la requête et l'a perdue (timeout) arrête tout — la
- * requête est peut-être partie, on ne la double pas sur un autre onglet.
+ * onglet qui a REÇU la requête et l'a perdue (délai dépassé, liaison rompue)
+ * arrête tout — la requête est peut-être partie, on ne la double pas sur un
+ * autre onglet.
  */
 import {
+  isNoReceiverError,
   isRestRelayReply,
   REST_MESSAGE_KIND,
   RELAY_TIMEOUT_MS,
@@ -80,12 +82,21 @@ export async function relayRestToTab(
     return { ok: false, failure: 'bridge', message: `Onglets illisibles : ${String(e)}` };
   }
   const message: RestRelayMessage = { kind: REST_MESSAGE_KIND, req };
+  let otherAccount = false;
   for (const tabId of orderTabs(tabs)) {
     let reply: unknown;
     try {
       reply = await withTimeout(api.sendToTab(tabId, message), timeoutMs);
-    } catch {
-      continue; // pas de content script dans cet onglet : suivant
+    } catch (e) {
+      // Pas de content script dans cet onglet : rien n'est parti, suivant.
+      if (isNoReceiverError(e)) continue;
+      // Liaison rompue APRÈS remise (onglet qui navigue, port fermé) : la
+      // requête est peut-être partie. Même règle que le délai dépassé.
+      return {
+        ok: false,
+        failure: 'timeout',
+        message: `Liaison avec l'onglet rompue après envoi, pas de nouvel essai : ${String(e)}`,
+      };
     }
     if (reply === TIMED_OUT) {
       return { ok: false, failure: 'timeout', message: 'L\'onglet Discord n\'a pas répondu' };
@@ -95,7 +106,20 @@ export async function relayRestToTab(
     }
     // Bridge absent dans cet onglet (rien n'est parti) : on essaie le suivant.
     if (!reply.ok && reply.failure === 'no-tab') continue;
+    // Onglet connecté à un autre compte (rien n'est parti) : on cherche un
+    // onglet du bon compte, jamais on n'émet au nom d'un autre (Codex H5).
+    if (!reply.ok && reply.failure === 'wrong-account') {
+      otherAccount = true;
+      continue;
+    }
     return reply;
+  }
+  if (otherAccount) {
+    return {
+      ok: false,
+      failure: 'wrong-account',
+      message: 'Les onglets Discord ouverts sont connectés à un autre compte',
+    };
   }
   return { ok: false, failure: 'no-tab', message: 'Aucun onglet Discord ouvert' };
 }

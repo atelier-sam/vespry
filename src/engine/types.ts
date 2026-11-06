@@ -308,6 +308,21 @@ export function stopMessage(kind: DiscordErrorKind): string {
   }
 }
 
+/**
+ * Refus venus de Discord lui-même (session, refus, page de protection,
+ * débit) : ils VERROUILLENT le client API. Plus aucune requête ne part, pour
+ * aucune tâche (export, purge, pré-comptage, fils), jusqu'à un geste explicite
+ * de l'utilisateur. `no-tab` / `no-client` n'en font pas partie : ce sont des
+ * pannes locales, rien n'a été refusé.
+ */
+const LATCH_KINDS: ReadonlySet<DiscordErrorKind> = new Set([
+  'auth', 'refused', 'blocked', 'rate-limited',
+]);
+
+export function isLatchingStop(e: unknown): e is DiscordApiError {
+  return e instanceof DiscordApiError && LATCH_KINDS.has(e.kind);
+}
+
 export function isAutoResumable(e: unknown): boolean {
   return e instanceof DiscordApiError && AUTO_RESUME_KINDS.has(e.kind);
 }

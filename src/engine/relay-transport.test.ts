@@ -28,6 +28,13 @@ describe('RelayTransport', () => {
     await expect(t.send(REQ)).rejects.toMatchObject({ failure: 'no-tab' });
   });
 
+  it('service worker tué après remise → timeout (pas de reprise automatique)', async () => {
+    const t = new RelayTransport(async () => {
+      throw new Error('A listener indicated an asynchronous response by returning true, but the message channel closed');
+    });
+    await expect(t.send(REQ)).rejects.toMatchObject({ failure: 'timeout' });
+  });
+
   it('réponse illisible → bridge', async () => {
     const t = new RelayTransport(async () => ({ nope: true }));
     await expect(t.send(REQ)).rejects.toMatchObject({ failure: 'bridge' });

@@ -24,6 +24,7 @@ import type { Pacer, RequestKind } from './pacer';
 import { TransportError, type DiscordTransport, type TransportResponse } from './transport';
 import {
   DiscordApiError,
+  isLatchingStop,
   isStopError,
   type ActiveThreadsResponse,
   type RawChannel,
@@ -46,6 +47,8 @@ const MISSING_ACCESS_CODES: ReadonlySet<number> = new Set([50001, 50013]);
 export interface DiscordApiOptions {
   transport: DiscordTransport;
   pacer: Pacer;
+  /** Appelé quand le verrou d'arrêt se pose (pour diffuser l'état aux vues). */
+  onHalt?: (e: DiscordApiError) => void;
 }
 
 function bodyCode(body: unknown): number | null {
@@ -70,6 +73,10 @@ function fromTransport(e: TransportError, path: string): DiscordApiError {
       return new DiscordApiError('no-client', 0, 'Client Discord pas encore prêt dans l\'onglet');
     case 'timeout':
       return new DiscordApiError('refused', 0, `Discord n'a pas répondu (captcha ou onglet figé) : ${path}`);
+    case 'wrong-account':
+      // Traité comme une session perdue : le message d'arrêt dit de se
+      // reconnecter (au bon compte) puis de reprendre.
+      return new DiscordApiError('auth', 0, 'L\'onglet Discord est connecté à un autre compte que celui de la tâche');
     default:
       return new DiscordApiError('unknown', 0, `Relais : ${e.message}`);
   }
@@ -78,10 +85,48 @@ function fromTransport(e: TransportError, path: string): DiscordApiError {
 export class DiscordApi {
   private readonly transport: DiscordTransport;
   private readonly pacer: Pacer;
+  /**
+   * Verrou d'arrêt (relecture Codex H3/H4, 06/11/2026). Le premier refus de
+   * Discord (`isLatchingStop`) le pose ; ensuite TOUTE requête, quelle que
+   * soit la tâche qui l'émet, échoue avec la même erreur SANS partir. Sans
+   * lui, un refus arrêtait la tâche qui l'avait reçu, mais la file passait
+   * au run suivant, une purge parallèle continuait, et un appelant qui avale
+   * l'erreur (pré-comptage, découverte des fils) relançait la suivante.
+   * Levé seulement par `clearHalt()`, sur un geste explicite de l'utilisateur.
+   */
+  private halt: DiscordApiError | null = null;
+  /** Compte auquel toutes les requêtes sont liées, cf. `bindUser`. */
+  private boundUser: string | null = null;
+
+  private readonly onHalt: ((e: DiscordApiError) => void) | undefined;
 
   constructor(opts: DiscordApiOptions) {
     this.transport = opts.transport;
     this.pacer = opts.pacer;
+    this.onHalt = opts.onHalt;
+  }
+
+  /**
+   * Lie le client à un compte : chaque requête suivante porte `asUser`, et la
+   * page refuse d'émettre si sa session est celle d'un autre compte.
+   */
+  bindUser(userId: string): void {
+    this.boundUser = userId;
+  }
+
+  /** Raison du verrou d'arrêt en cours, ou null. */
+  get haltedBy(): DiscordApiError | null {
+    return this.halt;
+  }
+
+  /** Lève le verrou. Réservé aux gestes explicites de l'utilisateur. */
+  clearHalt(): void {
+    this.halt = null;
+  }
+
+  private haltError(): DiscordApiError {
+    const h = this.halt as DiscordApiError;
+    return new DiscordApiError(h.kind, h.status, `Arrêt en cours (${h.kind}) : ${h.message}`);
   }
 
   /**
@@ -93,12 +138,39 @@ export class DiscordApi {
     opts: { method?: 'GET' | 'DELETE'; kind: RequestKind; tolerate404?: boolean },
   ): Promise<T | null> {
     const { method = 'GET', kind, tolerate404 = false } = opts;
+    try {
+      return await this.requestOnce<T>(path, method, kind, tolerate404);
+    } catch (e) {
+      if (isLatchingStop(e) && !this.halt) {
+        this.halt = e;
+        recordEvent('warn', `Arrêt verrouillé (${e.kind}) : ${e.message}`);
+        this.onHalt?.(e);
+      }
+      throw e;
+    }
+  }
+
+  private async requestOnce<T>(
+    path: string,
+    method: 'GET' | 'DELETE',
+    kind: RequestKind,
+    tolerate404: boolean,
+  ): Promise<T | null> {
     let consecutive429 = 0;
     for (;;) {
+      if (this.halt) throw this.haltError();
       let res: TransportResponse;
       try {
-        res = await this.pacer.run(kind, () => this.transport.send({ method, path }));
+        res = await this.pacer.run(kind, () => {
+          // Vérifié au moment d'émettre, pas seulement à l'entrée : une
+          // requête déjà en file derrière celle qui a été refusée ne part pas.
+          if (this.halt) throw this.haltError();
+          return this.transport.send(
+            this.boundUser ? { method, path, asUser: this.boundUser } : { method, path },
+          );
+        });
       } catch (e) {
+        if (e instanceof DiscordApiError) throw e;
         if (e instanceof TransportError) throw fromTransport(e, path);
         throw new DiscordApiError('network', 0, `Échec réseau : ${String(e)}`);
       }
@@ -121,7 +193,7 @@ export class DiscordApi {
         }
         this.pacer.noteRateLimited();
         recordEvent('warn', `429 sur ${path}, attente ${wait} s puis ralentissement`);
-        await this.pacer.hold(wait * 1000 + this.pacer.pick(RETRY_JITTER));
+        this.pacer.blockFor(wait * 1000 + this.pacer.pick(RETRY_JITTER));
         continue;
       }
       if (status === 401) {

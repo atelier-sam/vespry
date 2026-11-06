@@ -100,6 +100,8 @@ export class Pacer {
   private requests = 0;
   private restingUntil: number | null = null;
   private slowdown = 1;
+  /** Aucune émission avant cet instant (ms epoch), cf. `blockFor`. */
+  private notBefore = 0;
 
   constructor(mode: PaceMode = 'discreet', deps: PacerDeps = realPacerDeps) {
     this.mode = mode;
@@ -132,16 +134,14 @@ export class Pacer {
   }
 
   /**
-   * Bloque la file pendant `ms` sans compter de requête : sert à respecter un
-   * `retry_after` sans laisser d'autres requêtes passer devant.
+   * Interdit toute émission pendant `ms`, à compter de MAINTENANT, à toutes
+   * les requêtes, y compris celles déjà en file. Sert à respecter un
+   * `retry_after`. L'ancien `hold()` se rangeait en QUEUE de file : les
+   * requêtes déjà en attente passaient devant la pause que Discord venait
+   * d'exiger (relecture Codex M3, 06/11/2026).
    */
-  hold(ms: number): Promise<void> {
-    const turn = this.tail.then(() => this.rest(ms));
-    this.tail = turn.then(
-      () => undefined,
-      () => undefined,
-    );
-    return turn;
+  blockFor(ms: number): void {
+    this.notBefore = Math.max(this.notBefore, this.deps.now() + ms);
   }
 
   /**
@@ -209,6 +209,12 @@ export class Pacer {
     if (this.lastRequestAt !== null) {
       const remaining = this.lastRequestAt + delay - this.deps.now();
       if (remaining > 0) await this.deps.sleep(remaining);
+    }
+
+    // 4. Interdiction d'émettre posée par un `retry_after` (`blockFor`),
+    //    relue après chaque attente : elle a pu être repoussée entre-temps.
+    for (let wait = this.notBefore - this.deps.now(); wait > 0; wait = this.notBefore - this.deps.now()) {
+      await this.rest(wait);
     }
 
     this.lastRequestAt = this.deps.now();

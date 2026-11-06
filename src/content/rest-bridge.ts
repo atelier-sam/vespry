@@ -24,6 +24,7 @@
  */
 import {
   isAllowedRequest,
+  userIdFromToken,
   type RestRelayReply,
   type TransportRequest,
   type TransportResponse,
@@ -147,7 +148,16 @@ function normalizeClient(value: unknown, fallbackStatus: number): TransportRespo
   return out;
 }
 
-async function sendViaClient(rest: ClientRest, req: TransportRequest): Promise<TransportResponse | null> {
+/**
+ * `indeterminate` : le module a été APPELÉ puis a rejeté sans statut (forme
+ * changée, panne réseau). La requête est peut-être partie : on ne la rejoue
+ * PAS par le repli fetch (relecture Codex M2, 06/11/2026 : un DELETE ou une
+ * lecture pouvait partir deux fois). Le moteur reçoit une panne et décide.
+ */
+async function sendViaClient(
+  rest: ClientRest,
+  req: TransportRequest,
+): Promise<TransportResponse | 'indeterminate'> {
   const opts: ClientRestOptions = { ...splitPath(req.path), oldFormErrors: true };
   try {
     const res = await (req.method === 'GET' ? rest.get(opts) : rest.del(opts));
@@ -156,10 +166,10 @@ async function sendViaClient(rest: ClientRest, req: TransportRequest): Promise<T
     // Le client rejette avec un objet réponse ({ status, body }) sur 4xx/5xx.
     const r = normalizeClient(err, 0);
     if (r) return r;
-    // Rejet sans statut : forme du module changée ou panne réseau. On oublie
-    // le module (il sera recherché à nouveau) et on laisse le repli décider.
+    // On oublie le module : la requête SUIVANTE le cherchera à nouveau, ou
+    // passera par le repli s'il a disparu.
     cachedRest = null;
-    return null;
+    return 'indeterminate';
   }
 }
 
@@ -168,13 +178,43 @@ async function sendViaClient(rest: ClientRest, req: TransportRequest): Promise<T
 const HEADERS_WAIT_MS = 20_000;
 const HEADERS_POLL_MS = 250;
 
-async function waitForClientHeaders(): Promise<boolean> {
+async function waitForHeaders(names: readonly CapturedName[]): Promise<boolean> {
   const deadline = Date.now() + HEADERS_WAIT_MS;
   while (Date.now() < deadline) {
-    if (captured.has('authorization') && captured.has('x-super-properties')) return true;
+    if (names.every((n) => captured.has(n))) return true;
     await new Promise<void>((r) => setTimeout(r, HEADERS_POLL_MS));
   }
   return false;
+}
+
+const waitForClientHeaders = (): Promise<boolean> =>
+  waitForHeaders(['authorization', 'x-super-properties']);
+
+/**
+ * Vérifie que la session de la page est celle du compte attendu (Codex H5).
+ * Le compte se lit dans l'en-tête `authorization` que le client envoie
+ * lui-même : tant qu'il n'en a envoyé aucun, on ne sait pas qui est connecté,
+ * on n'émet pas. Un jeton de forme inconnue (Discord en changerait le
+ * format) laisse passer une LECTURE, jamais une suppression.
+ */
+async function checkAccount(req: TransportRequest): Promise<RestRelayReply | null> {
+  if (req.asUser === undefined) return null;
+  if (!(await waitForHeaders(['authorization']))) {
+    return {
+      ok: false,
+      failure: 'no-client-headers',
+      message: 'Compte de la page inconnu : le client Discord n\'a encore rien émis',
+    };
+  }
+  const id = userIdFromToken(captured.get('authorization'));
+  if (id === null) {
+    if (req.method === 'GET') return null;
+    return { ok: false, failure: 'bridge', message: 'Compte de la page illisible : suppression refusée' };
+  }
+  if (id !== req.asUser) {
+    return { ok: false, failure: 'wrong-account', message: 'Onglet connecté à un autre compte' };
+  }
+  return null;
 }
 
 async function sendViaFetch(
@@ -225,13 +265,21 @@ export async function executeRest(nativeFetch: typeof fetch, raw: unknown): Prom
   dbg.__vespryRestCount = (dbg.__vespryRestCount ?? 0) + 1;
   dbg.__vespryHeadersSeen = [...captured.keys()].join(',');
   try {
+    const refused = await checkAccount(req);
+    if (refused) return refused;
+    // Le repli fetch ne sert QUE si le module est introuvable AVANT l'appel.
     const rest = findClientRest();
     if (rest) {
       const res = await sendViaClient(rest, req);
-      if (res) {
-        dbg.__vespryRestVia = 'client';
-        return { ok: true, res };
+      dbg.__vespryRestVia = 'client';
+      if (res === 'indeterminate') {
+        return {
+          ok: false,
+          failure: 'bridge',
+          message: 'Module REST du client : rejet sans statut, envoi incertain (pas de nouvel essai)',
+        };
       }
+      return { ok: true, res };
     }
     dbg.__vespryRestVia = 'fetch';
     return await sendViaFetch(nativeFetch, req);
@@ -252,8 +300,25 @@ function isPortRequest(v: unknown): v is PortRequest {
 }
 
 /**
- * Écoute la poignée de main du content script. La dernière reçue gagne : après
- * une mise à jour de l'extension, le nouveau content script rouvre un canal.
+ * Écoute la poignée de main du content script. La PREMIÈRE acceptée gagne,
+ * pour toute la vie de la page (relecture Codex H1, 06/11/2026).
+ *
+ * Modèle de menace. Ce script tourne dans le monde MAIN, comme les scripts de
+ * Discord. Il ne peut pas authentifier son interlocuteur : un script hostile
+ * dans la page détient déjà le jeton et les cookies, il n'a pas besoin de
+ * Vespry pour émettre. Ce qu'il ne doit PAS pouvoir faire, c'est détourner le
+ * canal (lire les requêtes du moteur, forger ses réponses). D'où :
+ *  - l'écoute en phase de CAPTURE, posée à `document_start` avant tout script
+ *    de la page : on voit la poignée de main en premier ;
+ *  - `stopImmediatePropagation()` sur TOUTE poignée de main, acceptée ou
+ *    non : aucun écouteur posé après nous ne reçoit un port ;
+ *  - première acceptée = définitive : une poignée de main postée ensuite par
+ *    la page ne remplace pas le canal du moteur. L'ancienne règle (« la
+ *    dernière gagne ») laissait n'importe quel script s'y substituer.
+ * Coût assumé : après une mise à jour de l'extension, l'onglet Discord doit
+ * être rechargé (Chrome ne réinjecte rien de toute façon ; un navigateur qui
+ * réinjecterait verrait l'ancien bridge garder la main). Le moteur reçoit
+ * alors `no-tab` et le dit ; mieux qu'un canal qu'un script peut détourner.
  */
 export function installRestServer(nativeFetch: typeof fetch): void {
   let active: MessagePort | null = null;
@@ -261,9 +326,12 @@ export function installRestServer(nativeFetch: typeof fetch): void {
     if (event.source !== window) return;
     const data = event.data as { source?: unknown } | null;
     if (!data || data.source !== REST_HANDSHAKE_SOURCE) return;
+    // Toute poignée de main s'arrête ici, acceptée ou non : un script de la
+    // page ne doit jamais recevoir un port destiné au bridge.
+    event.stopImmediatePropagation();
+    if (active) return;
     const port = event.ports[0];
     if (!port) return;
-    active?.close();
     active = port;
     port.onmessage = (msg: MessageEvent) => {
       if (!isPortRequest(msg.data)) return;
@@ -273,5 +341,5 @@ export function installRestServer(nativeFetch: typeof fetch): void {
       });
     };
     port.postMessage({ ready: true });
-  });
+  }, true);
 }

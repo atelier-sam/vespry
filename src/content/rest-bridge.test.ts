@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RestRelayReply } from '../engine/transport';
+import { REST_HANDSHAKE_SOURCE } from './rest-bridge-protocol';
 
 type Bridge = typeof import('./rest-bridge');
 
@@ -124,5 +125,127 @@ describe('rest-bridge — voie 2 : fetch même-origine', () => {
     const r: RestRelayReply = await p;
     expect(r).toMatchObject({ ok: false, failure: 'no-client-headers' });
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('rest-bridge — voie 1 sans double envoi', () => {
+  // Relecture Codex M2 : le module a été appelé, rien ne dit que la requête
+  // n'est pas partie. Pas de repli fetch derrière.
+  it('rejet du client SANS statut → panne bridge, jamais rejouée par fetch', async () => {
+    const del = vi.fn(async () => { throw new Error('forme inattendue'); });
+    win.webpackChunkdiscord_app = webpackWith([{ get: vi.fn(), del, put: vi.fn(), patch: vi.fn() }]);
+    const f = vi.fn();
+    const r = await bridge.executeRest(f as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2',
+    });
+    expect(r).toMatchObject({ ok: false, failure: 'bridge' });
+    expect(del).toHaveBeenCalledTimes(1);
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('rest-bridge — poignée de main (Codex H1)', () => {
+  type Listener = { cb: (e: MessageEvent) => void; capture: boolean };
+
+  function handshakeEvent(port: MessagePort): MessageEvent & { stopped: () => boolean } {
+    let stopped = false;
+    return {
+      source: win,
+      data: { source: REST_HANDSHAKE_SOURCE },
+      ports: [port],
+      stopImmediatePropagation: () => { stopped = true; },
+      stopped: () => stopped,
+    } as unknown as MessageEvent & { stopped: () => boolean };
+  }
+
+  function nextMessage(port: MessagePort, ms = 100): Promise<unknown> {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => resolve('rien'), ms);
+      port.onmessage = (ev) => { clearTimeout(t); resolve(ev.data); };
+    });
+  }
+
+  it('écoute en capture, la première poignée de main gagne, toutes sont arrêtées', async () => {
+    const listeners: Listener[] = [];
+    win.addEventListener = ((_t: string, cb: (e: MessageEvent) => void, capture?: boolean) => {
+      listeners.push({ cb, capture: capture === true });
+    }) as FakeWin['addEventListener'];
+    bridge.installRestServer(neverFetch as unknown as typeof fetch);
+    expect(listeners).toHaveLength(1);
+    expect(listeners[0]?.capture).toBe(true);
+
+    const first = new MessageChannel();
+    const e1 = handshakeEvent(first.port2);
+    const ready1 = nextMessage(first.port1);
+    listeners[0]?.cb(e1);
+    expect(await ready1).toEqual({ ready: true });
+    expect(e1.stopped()).toBe(true);
+
+    // Un script de la page tente de prendre la place : ignoré, et arrêté.
+    const intruder = new MessageChannel();
+    const e2 = handshakeEvent(intruder.port2);
+    const ready2 = nextMessage(intruder.port1);
+    listeners[0]?.cb(e2);
+    expect(await ready2).toBe('rien');
+    expect(e2.stopped()).toBe(true);
+
+    for (const c of [first, intruder]) { c.port1.close(); c.port2.close(); }
+  });
+});
+
+// Relecture Codex H5 : une tâche ne change jamais de compte en cours de route.
+describe('rest-bridge — compte lié', () => {
+  const ME = '123456789012345678';
+  const OTHER = '876543210987654321';
+  const tokenOf = (id: string): string => `${btoa(id).replace(/=+$/, '')}.GzAbCd.secretpart`;
+
+  function clientWith(del = vi.fn(async () => undefined)) {
+    win.webpackChunkdiscord_app = webpackWith([{ get: vi.fn(async () => ({ status: 200, body: [] })), del, put: vi.fn(), patch: vi.fn() }]);
+    return del;
+  }
+
+  it('bon compte → émis', async () => {
+    const del = clientWith();
+    bridge.observeClientHeader('Authorization', tokenOf(ME));
+    const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
+    });
+    expect(r).toMatchObject({ ok: true });
+    expect(del).toHaveBeenCalledTimes(1);
+  });
+
+  it('autre compte → wrong-account, RIEN n\'est émis', async () => {
+    const del = clientWith();
+    bridge.observeClientHeader('authorization', tokenOf(OTHER));
+    const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
+    });
+    expect(r).toMatchObject({ ok: false, failure: 'wrong-account' });
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('compte encore inconnu (aucun en-tête) → attend puis no-client-headers', async () => {
+    vi.useFakeTimers();
+    const del = clientWith();
+    const p = bridge.executeRest(neverFetch as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
+    });
+    await vi.advanceTimersByTimeAsync(21_000);
+    expect(await p).toMatchObject({ ok: false, failure: 'no-client-headers' });
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it('jeton de forme inconnue : lecture permise, suppression refusée', async () => {
+    const del = clientWith();
+    bridge.observeClientHeader('authorization', 'nouveau-format-sans-point');
+    const read = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
+      method: 'GET', path: '/users/@me/guilds', asUser: ME,
+    });
+    expect(read).toMatchObject({ ok: true });
+    const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
+      method: 'DELETE', path: '/channels/1/messages/2', asUser: ME,
+    });
+    expect(r).toMatchObject({ ok: false, failure: 'bridge' });
+    expect(del).not.toHaveBeenCalled();
   });
 });

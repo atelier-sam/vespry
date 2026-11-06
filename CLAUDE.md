@@ -34,6 +34,17 @@ Pourquoi : depuis mars 2026 Discord sanctionne les exports par compte
 utilisateur ; une requête émise depuis `chrome-extension://`, sans cookies ni
 en-têtes du client, est une signature. Ne JAMAIS réintroduire d'appel direct.
 
+Trois invariants du chemin (relecture Codex, 06/11/2026), chacun testé :
+- **Verrou d'arrêt** (`DiscordApi.haltedBy`) : un refus de Discord (`auth`,
+  `refused`, `blocked`, `rate-limited`) bloque TOUTE requête suivante, de
+  toute tâche. Seul un geste de l'utilisateur le lève (`clearHalt`, bouton
+  Reprendre). Ne jamais appeler `clearHalt` depuis un chemin automatique.
+- **Compte lié** (`bindUser` → `asUser`) : la page refuse d'émettre si sa
+  session est celle d'un autre compte (`wrong-account`).
+- **Pas de double envoi** : une requête peut-être partie (délai dépassé,
+  liaison rompue après remise, module client sans statut) n'est jamais
+  rejouée ; elle devient un arrêt.
+
 ## Moteur (`src/engine/`)
 
 - `discord-api.ts` — client API Discord. Dérivé de Discrub Classic (MIT).

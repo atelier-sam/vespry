@@ -135,6 +135,11 @@ export interface VespryState {
   purgeQueue: PurgeItemView[];
   /** Rythme appliqué par le moteur (réglage « Rythme »). */
   pace: PaceMode;
+  /**
+   * Verrou d'arrêt : Discord a refusé une requête, plus rien ne part tant que
+   * l'utilisateur n'a pas cliqué « Reprendre » (commande `clear-halt`).
+   */
+  halt: StopKind | null;
 }
 
 // --- commandes vue → offscreen (via le service worker) ---
@@ -229,7 +234,8 @@ export type VespryCommand =
    */
   | { cmd: 'discord-tab-ready' }
   /** Change le rythme des requêtes (réglage « Rythme », persisté côté moteur). */
-  | { cmd: 'set-pace'; mode: PaceMode };
+  | { cmd: 'set-pace'; mode: PaceMode }
+  | { cmd: 'clear-halt' };
 
 /**
  * Paramètres d'un export passés à `enqueue`, hors guild/channels/media.
@@ -273,6 +279,8 @@ export interface CommandResponse {
    * rate-limit excédé). `0` est une valeur valide (salons vides).
    */
   estimatedTotal?: number | null;
+  /** Arrêt rencontré (ou verrou déjà posé) pendant l'estimation. */
+  estimateStop?: StopKind | null;
   /**
    * Historique des runs précédents (commande `list-runs`) — vue épurée
    * sans les blobs IDB volumineux. Triée du plus récent au plus ancien.

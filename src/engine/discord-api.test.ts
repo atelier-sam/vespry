@@ -151,3 +151,72 @@ describe('DiscordApi — médias CDN', () => {
     expect(t.calls).toHaveLength(0);
   });
 });
+
+// Relecture Codex H3/H4 (06/11/2026) : un refus de Discord arrête TOUT, pas
+// seulement la tâche qui l'a reçu.
+describe('DiscordApi — verrou d\'arrêt', () => {
+  it('après un refus, plus aucune requête ne part, quelle que soit la route', async () => {
+    const t = new FakeTransport([status(403, { code: 0 })], () => ok([]));
+    const api = apiWith(t);
+    await expect(api.getMessages('1')).rejects.toMatchObject({ kind: 'refused' });
+    await expect(api.getGuilds()).rejects.toMatchObject({ kind: 'refused' });
+    await expect(api.deleteMessage('1', '2')).rejects.toMatchObject({ kind: 'refused' });
+    // Un appelant qui « tolère » l'échec (pré-comptage) ne relance pas non plus.
+    await expect(api.searchMessageCount('9', '1')).rejects.toMatchObject({ kind: 'refused' });
+    expect(t.calls).toHaveLength(1);
+    expect(api.haltedBy?.kind).toBe('refused');
+  });
+
+  it('une requête déjà en file derrière le refus ne part pas', async () => {
+    const t = new FakeTransport([status(401, {})], () => ok([]));
+    const api = apiWith(t);
+    const [a, b] = await Promise.allSettled([api.getMessages('1'), api.deleteMessage('1', '2')]);
+    expect(a).toMatchObject({ status: 'rejected', reason: { kind: 'auth' } });
+    expect(b).toMatchObject({ status: 'rejected', reason: { kind: 'auth' } });
+    expect(t.calls).toHaveLength(1);
+  });
+
+  it('clearHalt (geste de l\'utilisateur) rouvre le client', async () => {
+    const t = new FakeTransport([status(429, {}, { retryAfterSec: 3600 })], () => ok([]));
+    const api = apiWith(t);
+    await expect(api.getGuilds()).rejects.toMatchObject({ kind: 'rate-limited' });
+    api.clearHalt();
+    await expect(api.getGuilds()).resolves.toEqual([]);
+    expect(t.calls).toHaveLength(2);
+  });
+
+  it('une panne locale (pas d\'onglet) ne verrouille pas', async () => {
+    const t = new FakeTransport([], () => ok([]));
+    let first = true;
+    const flaky = {
+      send: async (req: Parameters<FakeTransport['send']>[0]) => {
+        if (first) { first = false; throw new TransportError('no-tab', 'x'); }
+        return t.send(req);
+      },
+    };
+    const api = new DiscordApi({ transport: flaky, pacer: instantPacer() });
+    await expect(api.getGuilds()).rejects.toMatchObject({ kind: 'no-tab' });
+    expect(api.haltedBy).toBeNull();
+    await expect(api.getGuilds()).resolves.toEqual([]);
+  });
+});
+
+describe('DiscordApi — compte lié (Codex H5)', () => {
+  it('bindUser : chaque requête porte asUser', async () => {
+    const t = new FakeTransport([], () => ok([]));
+    const api = apiWith(t);
+    await api.getGuilds();
+    api.bindUser('42');
+    await api.getMessages('1');
+    expect(t.calls[0]).toEqual({ method: 'GET', path: '/users/@me/guilds' });
+    expect(t.calls[1]).toMatchObject({ asUser: '42' });
+  });
+
+  it('onglet d\'un autre compte → arrêt auth, verrouillé', async () => {
+    const t = new FakeTransport([new TransportError('wrong-account', 'x')], () => ok([]));
+    const api = apiWith(t);
+    api.bindUser('42');
+    await expect(api.deleteMessage('1', '2')).rejects.toMatchObject({ kind: 'auth' });
+    expect(api.haltedBy?.kind).toBe('auth');
+  });
+});

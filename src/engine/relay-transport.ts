@@ -10,6 +10,7 @@
  */
 import {
   isAllowedRequest,
+  isNoReceiverError,
   REST_MESSAGE_KIND,
   RELAY_TIMEOUT_MS,
   TransportError,
@@ -47,8 +48,15 @@ export class RelayTransport implements DiscordTransport {
     } catch (e) {
       if (e instanceof TransportError) throw e;
       // `sendMessage` rejette quand aucun récepteur n'existe (service worker
-      // en cours de redémarrage) : traité comme « pas d'onglet », reprenable.
-      throw new TransportError('no-tab', `Relais indisponible : ${String(e)}`);
+      // en cours de redémarrage) : rien n'est parti, « pas d'onglet »,
+      // reprenable.
+      if (isNoReceiverError(e)) {
+        throw new TransportError('no-tab', `Relais indisponible : ${String(e)}`);
+      }
+      // Rupture après remise (service worker tué en pleine requête) : la
+      // requête est peut-être partie. Pas de reprise automatique : même
+      // traitement qu'un délai dépassé (Codex M1).
+      throw new TransportError('timeout', `Relais rompu après envoi : ${String(e)}`);
     } finally {
       clearTimeout(timer);
     }

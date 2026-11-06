@@ -23,6 +23,13 @@ export interface TransportRequest {
   method: TransportMethod;
   /** Chemin + query string, ex. `/channels/1/messages?limit=100`. */
   path: string;
+  /**
+   * Compte attendu (id utilisateur). La page refuse d'émettre si sa session
+   * est celle d'un autre compte : un export ou une purge ne change jamais de
+   * compte en cours de route (relecture Codex H5, 06/11/2026). Absent pour
+   * la toute première requête (`/users/@me`), qui sert à le connaître.
+   */
+  asUser?: string;
 }
 
 /** Réponse normalisée, quel que soit le chemin réellement emprunté. */
@@ -45,9 +52,17 @@ export interface TransportResponse {
  * - `no-client-headers` : le client Discord n'a encore émis aucune requête
  *   dont on puisse reprendre les en-têtes, et son module REST est introuvable ;
  * - `rejected` : la route n'est pas dans la liste blanche ;
- * - `bridge` : erreur inattendue côté page.
+ * - `bridge` : erreur inattendue côté page ;
+ * - `wrong-account` : l'onglet est connecté à un autre compte.
  */
-export type TransportFailure = 'no-tab' | 'timeout' | 'no-client-headers' | 'rejected' | 'bridge';
+export type TransportFailure =
+  | 'no-tab'
+  | 'timeout'
+  | 'no-client-headers'
+  | 'rejected'
+  | 'bridge'
+  /** La session de l'onglet est celle d'un autre compte que `asUser` (rien n'est parti). */
+  | 'wrong-account';
 
 export class TransportError extends Error {
   constructor(
@@ -84,21 +99,49 @@ const ALLOWED: ReadonlyArray<{ method: TransportMethod; pattern: RegExp }> = [
   { method: 'GET', pattern: new RegExp(`^/channels/${SNOWFLAKE}/threads/archived/(public|private)$`) },
   {
     method: 'GET',
-    pattern: new RegExp(`^/channels/${SNOWFLAKE}/messages/${SNOWFLAKE}/reactions/[^/?#]+$`),
+    // Segment emoji = sortie d'`encodeURIComponent` (cf. `getReactions`) :
+    // caractères non réservés ou `%XX`, jamais de point (les noms d'emoji
+    // custom sont alphanumériques). L'ancien `[^/?#]+` laissait passer `\`
+    // et `%2e%2e`, que l'analyseur d'URL normalise en remontée de chemin
+    // (relecture Codex H2, 06/11/2026).
+    pattern: new RegExp(`^/channels/${SNOWFLAKE}/messages/${SNOWFLAKE}/reactions/(?:[A-Za-z0-9_\\-!~*'()]|%[0-9A-Fa-f]{2})+$`),
   },
   { method: 'DELETE', pattern: new RegExp(`^/channels/${SNOWFLAKE}/messages/${SNOWFLAKE}$`) },
 ];
 
 /** Vrai si la requête est autorisée (méthode + chemin hors query string). */
-export function isAllowedRequest(req: { method?: unknown; path?: unknown }): req is TransportRequest {
+export function isAllowedRequest(
+  req: { method?: unknown; path?: unknown; asUser?: unknown },
+): req is TransportRequest {
   if (req.method !== 'GET' && req.method !== 'DELETE') return false;
+  if (req.asUser !== undefined && (typeof req.asUser !== 'string' || !/^\d{1,25}$/.test(req.asUser))) {
+    return false;
+  }
   if (typeof req.path !== 'string' || req.path.length > 2048) return false;
   if (!req.path.startsWith('/')) return false;
   const pathOnly = req.path.split('?')[0] ?? '';
   // Pas de remontée de répertoire ni de double slash : le chemin doit rester
   // une route API, jamais une URL arbitraire.
   if (pathOnly.includes('..') || pathOnly.includes('//')) return false;
+  // Un chemin n'est accepté que s'il ressort IDENTIQUE de l'analyseur d'URL
+  // (celui qu'emploient fetch et le module REST du client). Ce qu'il
+  // normaliserait (`\`, `%2e`, `%2f`, `%5c`, fragment) pourrait sortir de la
+  // route vérifiée : refus, des deux côtés du fil.
+  if (/[\\#]/.test(req.path) || /%(?:2e|2f|5c)/i.test(pathOnly)) return false;
+  if (!isCanonicalPath(pathOnly)) return false;
   return ALLOWED.some((r) => r.method === req.method && r.pattern.test(pathOnly));
+}
+
+// Préfixe neutre : la garde `no-direct-api.test.ts` interdit l'URL de l'API
+// hors de rest-bridge.ts, et la normalisation ne dépend pas du préfixe.
+const CANON_PREFIX = '/r';
+
+function isCanonicalPath(pathOnly: string): boolean {
+  try {
+    return new URL(CANON_PREFIX + pathOnly, 'https://canon.invalid').pathname === CANON_PREFIX + pathOnly;
+  } catch {
+    return false;
+  }
 }
 
 /** Validation d'une réponse reçue du fil (données venues d'un autre contexte). */
@@ -111,6 +154,37 @@ export function isTransportResponse(v: unknown): v is TransportResponse {
     && typeof r.nonJson === 'boolean'
     && (r.retryAfterSec === undefined || typeof r.retryAfterSec === 'number')
   );
+}
+
+/**
+ * Vrai si un `sendMessage` a échoué FAUTE DE DESTINATAIRE (« Could not
+ * establish connection. Receiving end does not exist. », Chrome et Firefox) :
+ * le message n'a été remis à personne, rien n'est parti. Toute autre rupture
+ * (port fermé avant la réponse, onglet qui navigue, service worker tué) peut
+ * survenir APRÈS la remise : la requête est peut-être partie, on ne la
+ * rejoue pas (relecture Codex M1, 06/11/2026).
+ */
+export function isNoReceiverError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /Receiving end does not exist|Could not establish connection/i.test(msg);
+}
+
+/**
+ * Id utilisateur porté par un jeton de session Discord : le premier segment
+ * est l'id en base64 (sans remplissage, parfois en base64url). `null` si le
+ * jeton n'a pas cette forme.
+ */
+export function userIdFromToken(token: string | undefined): string | null {
+  if (!token) return null;
+  const head = token.replace(/^Bearer\s+/i, '').split('.')[0] ?? '';
+  if (!/^[A-Za-z0-9+/_-]{4,64}$/.test(head)) return null;
+  const b64 = head.replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    const id = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    return /^\d{5,25}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
 }
 
 // --- Messages échangés sur le fil (moteur → SW/background → onglet) ---
@@ -133,7 +207,9 @@ export function isRestRelayMessage(m: unknown): m is RestRelayMessage {
     && isAllowedRequest(o.req as Record<string, unknown>);
 }
 
-const FAILURES: ReadonlySet<string> = new Set(['no-tab', 'timeout', 'no-client-headers', 'rejected', 'bridge']);
+const FAILURES: ReadonlySet<string> = new Set([
+  'no-tab', 'timeout', 'no-client-headers', 'rejected', 'bridge', 'wrong-account',
+]);
 
 export function isRestRelayReply(v: unknown): v is RestRelayReply {
   if (!v || typeof v !== 'object') return false;

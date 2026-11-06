@@ -205,14 +205,10 @@ async function exec(command: VespryCommand): Promise<CommandResponse> {
       return { ok: true, state: controller.toState() };
     case 'load-channels':
       return { ok: true, channels: await controller.loadChannels(command.guildId) };
-    case 'estimate':
-      return {
-        ok: true,
-        estimatedTotal: await controller.estimateMessages(
-          command.guildId,
-          command.channelIds,
-        ),
-      };
+    case 'estimate': {
+      const est = await controller.estimateMessages(command.guildId, command.channelIds);
+      return { ok: true, estimatedTotal: est.total, estimateStop: est.stop };
+    }
     case 'list-runs':
       return { ok: true, runs: await controller.listRuns() };
     case 'delete-run':
@@ -268,6 +264,9 @@ async function exec(command: VespryCommand): Promise<CommandResponse> {
     case 'set-pace':
       controller.setPace(command.mode);
       await chrome.storage.local.set({ [PACE_STORAGE_KEY]: command.mode });
+      return { ok: true, state: controller.toState() };
+    case 'clear-halt':
+      controller.clearHalt();
       return { ok: true, state: controller.toState() };
     case 'scheduled-export-fire': {
       // Réveil par `chrome.alarms`. Sans onglet Discord ouvert, rien ne part :

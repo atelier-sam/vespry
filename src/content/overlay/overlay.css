@@ -1190,4 +1190,5 @@
   background: color-mix(in srgb, var(--amber) 10%, transparent);
   font-size: 12.5px; line-height: 1.45; color: var(--text);
 }
+.v-halt { margin: 0 0 10px; display: flex; flex-direction: column; gap: 8px; }
 .v-modal-risk b { color: var(--text); font-weight: 700; }

@@ -31,6 +31,30 @@ lots : une signature facile à repérer. Ce chantier la retire.
 - **Moins de requêtes** : comptage préalable en série, mis en cache 30 min et
   réutilisé au lancement (avant : refait deux fois, en parallèle).
 
+### Sûreté (relecture croisée Codex)
+- **Un refus arrête tout** : dès que Discord refuse (session, captcha,
+  protection, débit), plus aucune requête ne part, pour aucune tâche
+  (exports en file, suppression parallèle, estimation, fils), y compris
+  celles déjà en attente. Un bandeau dit pourquoi ; lancer et supprimer sont
+  grisés jusqu'au clic sur « Reprendre ».
+- **Une tâche ne change jamais de compte** : chaque requête est liée au
+  compte du début ; un onglet Discord connecté à un autre compte est ignoré,
+  et sans onglet du bon compte la tâche s'arrête.
+- **Jamais deux fois la même requête** : ni repli `fetch` après un appel du
+  client resté sans réponse lisible, ni nouvel essai sur un autre onglet
+  quand la liaison casse après l'envoi.
+- `retry_after` de Discord respecté par toute la file, immédiatement (les
+  requêtes déjà en attente ne passent plus devant).
+- Liste blanche des routes durcie : un chemin que l'analyseur d'URL
+  réécrirait (`\`, `%2e`, `%2f`, `%5c`) est refusé. Avant, le segment
+  emoji d'une réaction permettait d'atteindre une autre route.
+- Canal privé entre la page et l'extension : la première poignée de main
+  gagne, et aucun script de la page ne reçoit le port.
+- Arrêt « Discord pas encore chargé » : la reprise automatique arrive
+  vraiment (l'onglet se ré-annonce), et le bouton « Reprendre » reste là.
+- Export planifié en attente : tiré une seule fois même si deux onglets
+  Discord s'ouvrent ensemble.
+
 ### Avertissement honnête
 - La modale du premier export disait « rarement sanctionné », faux depuis
   mars 2026. Réécrite : les sanctions observées, ce que fait Vespry pour les

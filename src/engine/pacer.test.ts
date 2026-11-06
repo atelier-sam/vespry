@@ -100,12 +100,24 @@ describe('Pacer', () => {
     expect(p.snapshot().slowdown).toBe(3);
   });
 
-  it('hold bloque la file sans compter de requête', async () => {
-    const clock = virtualClock();
+  it('blockFor s\'applique aussi aux requêtes DÉJÀ en file, sans compter de requête', async () => {
+    const clock = virtualClock(() => 0);
     const p = new Pacer('discreet', clock);
-    await p.hold(5_000);
-    expect(clock.sleeps).toContain(5_000);
-    expect(p.snapshot().requests).toBe(0);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const sentAt: number[] = [];
+    // A est en vol ; B attend déjà derrière lui dans la file.
+    const a = p.run('read', async () => { sentAt.push(clock.t()); await gate; });
+    const b = p.run('read', async () => { sentAt.push(clock.t()); });
+    await Promise.resolve();
+    // A reçoit un 429 : Discord exige 5 s de silence à partir de maintenant.
+    const blockedAt = clock.t();
+    p.blockFor(5_000);
+    release();
+    await Promise.all([a, b]);
+    expect(sentAt).toHaveLength(2);
+    expect((sentAt[1] ?? 0) - blockedAt).toBeGreaterThanOrEqual(5_000);
+    expect(p.snapshot().requests).toBe(2);
   });
 
   it('changement de cran pris en compte à la requête suivante', async () => {

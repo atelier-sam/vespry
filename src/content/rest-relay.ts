@@ -60,18 +60,23 @@ export class RestPortClient {
     const limit = this.env.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS;
     return new Promise((resolve) => {
       let done = false;
-      let channel: MessageChannel | null = null;
+      // Toutes les tentatives restent à l'écoute jusqu'au premier `ready` :
+      // le bridge garde la PREMIÈRE poignée de main reçue (cf. rest-bridge,
+      // H1) ; fermer une tentative avant sa réponse perdrait le seul canal
+      // qu'il acceptera.
+      const tries: MessagePort[] = [];
       const attempt = (): void => {
         if (done) return;
-        channel?.port1.close();
-        channel = new MessageChannel();
+        const channel = new MessageChannel();
         const local = channel.port1;
+        tries.push(local);
         local.onmessage = (ev: MessageEvent) => {
           const data = ev.data as { ready?: unknown } | null;
           if (done || !data || data.ready !== true) return;
           done = true;
           clearInterval(retry);
           clearTimeout(giveUp);
+          for (const p of tries) if (p !== local) p.close();
           local.onmessage = (msg: MessageEvent) => this.onReply(msg.data);
           this.port = local;
           resolve(local);
@@ -87,7 +92,7 @@ export class RestPortClient {
         if (done) return;
         done = true;
         clearInterval(retry);
-        channel?.port1.close();
+        for (const p of tries) p.close();
         resolve(null);
       }, limit);
       attempt();

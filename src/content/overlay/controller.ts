@@ -339,10 +339,16 @@ export class VespryController {
    * de SIGNAL de reconnexion (cf. `watchForSession`).
    */
   private async loadSession(): Promise<boolean> {
-    const api = new DiscordApi({ transport: this.transport, pacer: this.pacer });
+    const api = new DiscordApi({
+      transport: this.transport,
+      pacer: this.pacer,
+      onHalt: () => this.notify(),
+    });
     try {
       // En série : le Pacer sérialise de toute façon.
       const user = await api.getCurrentUser();
+      // Toutes les requêtes suivantes (export, purge…) sont liées à CE compte.
+      api.bindUser(user.id);
       const guilds = await api.getGuilds();
       this.api = api;
       this.currentUser = user;
@@ -543,8 +549,12 @@ export class VespryController {
   async estimateMessages(
     guildId: string,
     channelIds: string[],
-  ): Promise<number | null> {
-    if (!this.api || channelIds.length === 0) return 0;
+  ): Promise<{ total: number | null; stop: StopKind | null }> {
+    if (!this.api || channelIds.length === 0) return { total: 0, stop: null };
+    // Verrou posé : on ne tente rien, l'overlay montre la raison au lieu de
+    // lancer (relecture Codex H4 : l'estimation avalait l'arrêt et l'export
+    // partait quand même).
+    if (this.halt) return { total: null, stop: this.halt };
     const isDmGuild = !guildId || guildId === '@me';
     // En série, une recherche par salon, résultat gardé en cache : le pré-vol
     // ne doit pas ressembler à un balayage (cf. BRIEF décision 7).
@@ -566,7 +576,7 @@ export class VespryController {
           // rend ce qu'on a. L'export lui-même s'arrêtera proprement.
           if (isStopError(e)) {
             recordEvent('warn', `estimateMessages interrompu : ${stopMessage(e.kind)}`);
-            break;
+            return { total: null, stop: e.kind as StopKind };
           }
           throw e;
         }
@@ -577,7 +587,7 @@ export class VespryController {
         total += count;
       }
     }
-    return anyOk ? total : null;
+    return { total: anyOk ? total : null, stop: null };
   }
 
   /** Comptage mis en cache par le pré-vol, s'il est encore frais. */
@@ -939,10 +949,34 @@ export class VespryController {
     this.notify();
   }
 
+  /**
+   * Raison du verrou d'arrêt du client API (refus de Discord), ou null.
+   * Tant qu'il est posé, aucune requête ne part, pour aucune tâche.
+   */
+  get halt(): StopKind | null {
+    const k = this.api?.haltedBy?.kind;
+    return k === 'auth' || k === 'refused' || k === 'blocked' || k === 'rate-limited' ? k : null;
+  }
+
+  /**
+   * Lève le verrou d'arrêt : SEULEMENT sur un geste explicite de
+   * l'utilisateur (bouton Reprendre du bandeau ou d'une tâche). Rien ne
+   * reprend tout seul : les tâches en pause restent en pause.
+   */
+  clearHalt(): void {
+    if (!this.api?.haltedBy) return;
+    this.api.clearHalt();
+    recordEvent('info', 'Verrou d\'arrêt levé par l\'utilisateur');
+    this.notify();
+  }
+
   /** Reprend une tâche mise en pause (après reconnexion à Discord). */
   resume(runId: string): void {
     const item = this.queue.find((q) => q.runId === runId);
     if (item && item.status === 'paused') {
+      // Cliquer « Reprendre » sur une tâche arrêtée par un refus, c'est
+      // décider de réessayer : le verrou se lève avec elle.
+      this.clearHalt();
       item.status = 'in_progress';
       delete item.stopReason;
       this.notify();
@@ -1005,6 +1039,7 @@ export class VespryController {
         ...(p.stopReason ? { stopReason: p.stopReason } : {}),
       })),
       pace: this.pacer.currentMode,
+      halt: this.halt,
     };
   }
 

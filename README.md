@@ -16,7 +16,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-informational)](package.json)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-258%20passants-brightgreen)](src/engine)
+[![Tests](https://img.shields.io/badge/tests-282%20passants-brightgreen)](src/engine)
 [![Crowdin](https://badges.crowdin.net/vespry/localized.svg)](https://crowdin.com/project/vespry)
 
 <br/>
@@ -375,13 +375,13 @@ npm install
 npm run dev              # build watch + HMR Chrome
 npm run build            # build Chrome production -> dist/
 npm run build:firefox    # build Firefox production -> dist-firefox/
-npm run test             # tests unitaires (vitest) — 258 tests
+npm run test             # tests unitaires (vitest) — 282 tests
 npm run typecheck        # vérification de types
 npm run firefox:lint     # web-ext lint pour AMO
 ```
 
 TypeScript strict, Manifest V3, Vite, Preact. Le moteur d'export est couvert
-par **258 tests unitaires** : reprise d'un export interrompu, streaming
+par **282 tests unitaires** : reprise d'un export interrompu, streaming
 AES-256, suppression idempotente.
 
 <br/>

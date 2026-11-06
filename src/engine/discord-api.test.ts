@@ -1,138 +1,153 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DiscordApi } from './discord-api';
-import { DiscordApiError } from './types';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { DiscordApiError, isStopError } from './types';
+import { TransportError } from './transport';
+import { FakeTransport, instantPacer, ok, status } from './test-fakes';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const api = (): DiscordApi => new DiscordApi({ token: 'tok', requestDelayMs: 0 });
+function apiWith(t: FakeTransport): DiscordApi {
+  return new DiscordApi({ transport: t, pacer: instantPacer() });
+}
 
-describe('DiscordApi', () => {
-  it('getGuilds renvoie la liste des serveurs', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([{ id: '1', name: 'G' }])));
-    const guilds = await api().getGuilds();
-    expect(guilds).toEqual([{ id: '1', name: 'G' }]);
-  });
-
-  it('réessaie après un 429 puis réussit', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ retry_after: 0 }, 429))
-      .mockResolvedValueOnce(jsonResponse([{ id: '1', name: 'G' }]));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const guilds = await api().getGuilds();
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(guilds).toHaveLength(1);
-  });
-
-  it('lève une erreur typée auth sur 401', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: 'no' }, 401)));
-    await expect(api().getCurrentUser()).rejects.toMatchObject({
-      name: 'DiscordApiError',
-      kind: 'auth',
-    });
-  });
-
-  it('lève une erreur typée forbidden sur 403', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, 403)));
-    await expect(api().getGuildChannels('g1')).rejects.toBeInstanceOf(DiscordApiError);
+describe('DiscordApi — émission', () => {
+  it('passe par le transport, chemins sans version, jamais par fetch', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const t = new FakeTransport([ok([{ id: '1', name: 'G' }])]);
+    expect(await apiWith(t).getGuilds()).toEqual([{ id: '1', name: 'G' }]);
+    expect(t.calls).toEqual([{ method: 'GET', path: '/users/@me/guilds' }]);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('getMessages construit le curseur before', async () => {
-    const fetchMock = vi.fn((..._args: unknown[]) => Promise.resolve(jsonResponse([])));
-    vi.stubGlobal('fetch', fetchMock);
-    await api().getMessages('c1', '12345');
-    const url = String(fetchMock.mock.calls[0]?.[0] ?? '');
-    expect(url).toContain('/channels/c1/messages?limit=100&before=12345');
+    const t = new FakeTransport([ok([])]);
+    await apiWith(t).getMessages('11', '12345');
+    expect(t.calls[0]?.path).toBe('/channels/11/messages?limit=100&before=12345');
   });
 
-  it('downloadAsset renvoie null sur échec réseau', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
-    expect(await api().downloadAsset('https://cdn/x.png')).toBeNull();
+  it('un salon à la fois : deux appels concurrents ne sont jamais en vol ensemble', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const t = new FakeTransport([], () => ok([]));
+    const slow = {
+      send: async (req: Parameters<FakeTransport['send']>[0]) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return t.send(req);
+      },
+    };
+    const api = new DiscordApi({ transport: slow, pacer: instantPacer() });
+    await Promise.all([api.getMessages('1'), api.getMessages('2'), api.deleteMessage('3', '4')]);
+    expect(maxInFlight).toBe(1);
+  });
+});
+
+describe('DiscordApi — politique d\'erreurs', () => {
+  it('429 court : attend, ralentit le Pacer, puis réussit', async () => {
+    const pacer = instantPacer();
+    const t = new FakeTransport([status(429, { retry_after: 1 }, { retryAfterSec: 1 }), ok([])]);
+    const api = new DiscordApi({ transport: t, pacer });
+    await api.getGuilds();
+    expect(t.calls).toHaveLength(2);
+    expect(pacer.snapshot().slowdown).toBeGreaterThan(1);
   });
 
-  // ─────────────────────────── deleteMessage ───────────────────────────
-  // Phase 2 — fonctionnalité de purge. La méthode doit :
-  // 1. émettre un DELETE sur le bon endpoint ;
-  // 2. accepter un 204 No Content sans tenter de parser un corps vide ;
-  // 3. traiter un 404 comme un succès idempotent (message déjà supprimé) ;
-  // 4. lever DiscordApiError('forbidden') sur 403 ;
-  // 5. réutiliser le back-off 429 partagé avec GET.
-
-  it('deleteMessage envoie un DELETE sur le bon endpoint et accepte 204', async () => {
-    // Typage explicite des args : sans ça `mock.calls[0]` est typé `[]`
-    // (tuple vide) et l'indexation génère une erreur TS2493 sous
-    // `noUncheckedIndexedAccess` strict.
-    const fetchMock = vi.fn(
-      async (_url: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(null, { status: 204 }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    await api().deleteMessage('c1', 'm1');
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const call = fetchMock.mock.calls[0];
-    expect(String(call?.[0])).toContain('/channels/c1/messages/m1');
-    expect(call?.[1]?.method).toBe('DELETE');
+  it('429 répété : arrêt net rate-limited (pas de rafale)', async () => {
+    const r429 = status(429, { retry_after: 1 }, { retryAfterSec: 1 });
+    const t = new FakeTransport([r429, r429, r429, ok([])]);
+    await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind: 'rate-limited' });
+    expect(t.calls).toHaveLength(3);
   });
 
-  it('deleteMessage est idempotent sur 404 (message déjà supprimé)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: 'Unknown Message' }, 404)));
-    // Ne lève pas — l'effet désiré est atteint.
-    await expect(api().deleteMessage('c1', 'm1')).resolves.toBeUndefined();
+  it('429 avec retry_after > 60 s : arrêt immédiat', async () => {
+    const t = new FakeTransport([status(429, { retry_after: 300 }, { retryAfterSec: 300 })]);
+    await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind: 'rate-limited' });
+    expect(t.calls).toHaveLength(1);
   });
 
-  it('deleteMessage lève DiscordApiError(forbidden) sur 403', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: 'Missing Permissions' }, 403)));
-    await expect(api().deleteMessage('c1', 'm1')).rejects.toMatchObject({
-      name: 'DiscordApiError',
-      kind: 'forbidden',
-      status: 403,
-    });
+  it('401 → auth (arrêt)', async () => {
+    const t = new FakeTransport([status(401, { message: 'no' })]);
+    const err = await apiWith(t).getCurrentUser().catch((e: unknown) => e);
+    expect(err).toMatchObject({ name: 'DiscordApiError', kind: 'auth' });
+    expect(isStopError(err)).toBe(true);
   });
 
-  it('deleteMessage lève DiscordApiError(auth) sur 401', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: '401: Unauthorized' }, 401)));
-    await expect(api().deleteMessage('c1', 'm1')).rejects.toMatchObject({
-      name: 'DiscordApiError',
-      kind: 'auth',
-    });
+  it('403 Missing Access (50001) → forbidden, salon ignoré, pas un arrêt', async () => {
+    const t = new FakeTransport([status(403, { code: 50001, message: 'Missing Access' })]);
+    const err = await apiWith(t).getGuildChannels('1').catch((e: unknown) => e);
+    expect(err).toMatchObject({ kind: 'forbidden' });
+    expect(isStopError(err)).toBe(false);
   });
 
-  it('deleteMessage réutilise le back-off 429 (retry puis succès)', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ retry_after: 0 }, 429))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal('fetch', fetchMock);
+  it('403 sans code d\'accès → refused (arrêt)', async () => {
+    const t = new FakeTransport([status(403, { code: 40002, message: 'verify' })]);
+    await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind: 'refused' });
+  });
 
-    await api().deleteMessage('c1', 'm1');
+  it('captcha demandé → refused, jamais contourné', async () => {
+    const t = new FakeTransport([status(400, { captcha_key: ['captcha-required'], captcha_sitekey: 'x' })]);
+    await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind: 'refused' });
+    expect(t.calls).toHaveLength(1);
+  });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    // Les deux appels doivent être des DELETE sur la même URL.
-    for (const call of fetchMock.mock.calls) {
-      expect(String(call[0])).toContain('/channels/c1/messages/m1');
-      expect((call[1] as RequestInit | undefined)?.method).toBe('DELETE');
+  it('page non-JSON (Cloudflare) → blocked', async () => {
+    const t = new FakeTransport([{ status: 503, body: null, nonJson: true }]);
+    await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind: 'blocked' });
+  });
+
+  it('pannes du transport : no-tab, no-client, timeout→refused', async () => {
+    const cases: [TransportError, string][] = [
+      [new TransportError('no-tab', 'x'), 'no-tab'],
+      [new TransportError('no-client-headers', 'x'), 'no-client'],
+      [new TransportError('timeout', 'x'), 'refused'],
+    ];
+    for (const [e, kind] of cases) {
+      const t = new FakeTransport([e]);
+      await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind });
     }
   });
 
-  it('deleteMessage propage les erreurs HTTP inattendues', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: 'Server Error' }, 500)));
-    await expect(api().deleteMessage('c1', 'm1')).rejects.toMatchObject({
-      name: 'DiscordApiError',
-      kind: 'unknown',
-      status: 500,
-    });
+  it('500 → unknown', async () => {
+    const t = new FakeTransport([status(500, { message: 'oops' })]);
+    await expect(apiWith(t).getGuilds()).rejects.toMatchObject({ kind: 'unknown', status: 500 });
+  });
+
+  it('search : erreur non fatale → null, arrêt net → remonte', async () => {
+    const soft = new FakeTransport([status(403, { code: 50001 })]);
+    expect(await apiWith(soft).searchMessageCount('1', '2')).toBeNull();
+    const hard = new FakeTransport([status(401, {})]);
+    await expect(apiWith(hard).searchMessageCount('1', '2')).rejects.toBeInstanceOf(DiscordApiError);
+  });
+});
+
+describe('DiscordApi — deleteMessage', () => {
+  it('DELETE sur le bon chemin, 204 accepté', async () => {
+    const t = new FakeTransport([status(204)]);
+    await apiWith(t).deleteMessage('11', '22');
+    expect(t.calls).toEqual([{ method: 'DELETE', path: '/channels/11/messages/22' }]);
+  });
+
+  it('404 = succès idempotent (relais expiré alors que le DELETE était parti)', async () => {
+    const t = new FakeTransport([status(404, { message: 'Unknown Message' })]);
+    await expect(apiWith(t).deleteMessage('11', '22')).resolves.toBeUndefined();
+  });
+
+  it('403 Missing Permissions → forbidden', async () => {
+    const t = new FakeTransport([status(403, { code: 50013 })]);
+    await expect(apiWith(t).deleteMessage('11', '22')).rejects.toMatchObject({ kind: 'forbidden', status: 403 });
+  });
+});
+
+describe('DiscordApi — médias CDN', () => {
+  it('downloadAsset renvoie null sur échec (CDN signé, sans identité)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    const t = new FakeTransport();
+    expect(await apiWith(t).downloadAsset('https://cdn.discordapp.com/x.png')).toBeNull();
+    expect(t.calls).toHaveLength(0);
   });
 });

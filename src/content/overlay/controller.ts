@@ -14,18 +14,34 @@ import {
   type RunnerLogEvent,
 } from '../../engine/export-runner';
 import { packageRun } from '../../engine/packager';
-import { detectPerfProfile } from '../../engine/perf-profile';
+import { Pacer, type PaceMode } from '../../engine/pacer';
+import type { DiscordTransport } from '../../engine/transport';
+import { RelayTransport, runtimeRelay } from '../../engine/relay-transport';
+import { GET_PACE_KIND, isPaceMode } from '../../engine/pace-setting';
 import { maybeSendSchemaReport } from '../../engine/schema-report';
 import { loadCredits } from '../../credits';
 import { recordEvent } from '../../diagnostics';
-import type {
-  AssetKind,
-  ExportOptions,
-  MediaSelection,
-  RunStatus,
+import {
+  ALL_MEDIA,
+  DEFAULT_FORMATS,
+  type AssetKind,
+  type ExportOptions,
+  type MediaSelection,
+  type RunStatus,
 } from '../../engine/checkpoint-types';
-import { DiscordApiError } from '../../engine/types';
-import type { RawChannel, RawGuild, RawMessage, RawUser, Snowflake } from '../../engine/types';
+import {
+  DiscordApiError,
+  isAutoResumable,
+  isStopError,
+  stopMessage,
+  type DiscordErrorKind,
+  type RawChannel,
+  type RawGuild,
+  type RawMessage,
+  type RawUser,
+  type Snowflake,
+  type StopKind,
+} from '../../engine/types';
 import type { EnqueueExtras, PurgeItemView, VespryState } from '../../messaging';
 
 const MAX_LOG = 250;
@@ -34,11 +50,11 @@ const ZERO_KINDS: Record<AssetKind, number> = {
 };
 
 /**
- * Délai inter-DELETE pour la purge. Discord renvoie un 429 quand on dépasse
- * ~5 DELETE/s sur un même salon — on se cale à 200 ms (cf. tâche #4, le
- * back-off 429 dans `DiscordApi.deleteMessage` reste un filet de sécurité).
+ * Durée de vie du cache d'estimation (pré-vol). Une estimation refaite à
+ * chaque ouverture de la modale coûterait une recherche par salon à chaque
+ * fois ; on la garde pour la session, rafraîchie au-delà de 30 min.
  */
-const PURGE_DELAY_MS = 200;
+const ESTIMATE_TTL_MS = 30 * 60_000;
 
 /** Une tâche d'export dans la file. */
 export interface QueueItem {
@@ -88,6 +104,20 @@ export interface PurgeItem {
   log: string[];
   /** Ids restants à supprimer — consommé par le drain, non broadcastée. */
   pending: Snowflake[];
+  /** Raison d'un arrêt net ; `no-tab`/`no-client` → reprise à l'ouverture d'un onglet. */
+  stopReason?: StopKind;
+}
+
+/** Dépendances injectables (tests, hôte Firefox). */
+export interface ControllerDeps {
+  /** Transport REST ; défaut : relais par le service worker vers l'onglet Discord. */
+  transport?: DiscordTransport;
+  /** Régulateur partagé ; défaut : rythme discret. */
+  pacer?: Pacer;
+  /** Lit le jeton capté (signal de reconnexion) ; défaut : via le service worker. */
+  requestToken?: () => Promise<string | null>;
+  /** Lit le rythme enregistré ; défaut : via le service worker. */
+  requestPace?: () => Promise<PaceMode | null>;
 }
 
 const KIND_LABEL: Record<AssetKind, string> = {
@@ -116,6 +146,17 @@ async function requestToken(): Promise<string | null> {
     const r = await chrome.runtime.sendMessage({ kind: 'get-token' });
     const token = (r as { token?: unknown } | undefined)?.token;
     return typeof token === 'string' ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Rythme enregistré, lu par le service worker (l'offscreen n'a pas `chrome.storage`). */
+async function requestPace(): Promise<PaceMode | null> {
+  try {
+    const r = await chrome.runtime.sendMessage({ kind: GET_PACE_KIND });
+    const mode = (r as { mode?: unknown } | undefined)?.mode;
+    return isPaceMode(mode) ? mode : null;
   } catch {
     return null;
   }
@@ -196,7 +237,21 @@ function pushLog(log: string[], line: string): void {
 
 export class VespryController {
   readonly store = new CheckpointStore();
+  /**
+   * Régulateur UNIQUE : export, pré-vol, aperçu et purge passent tous par
+   * lui, donc une seule requête Discord en vol à la fois (PLAN F2).
+   */
+  readonly pacer: Pacer;
+  private readonly transport: DiscordTransport;
+  private readonly readToken: () => Promise<string | null>;
+  private readonly readPace: () => Promise<PaceMode | null>;
+  /** Non nul seulement quand la session a été vérifiée (users/@me a répondu). */
   api: DiscordApi | null = null;
+  /** Raison du dernier échec de chargement de session. */
+  private sessionFailure: DiscordErrorKind | null = null;
+  /** Jeton vu lors de la dernière tentative : on ne réessaie qu'à son changement. */
+  private lastTriedToken: string | null = null;
+  private readonly estimateCache = new Map<string, { count: number | null; at: number }>();
   currentUser: RawUser | null = null;
   guilds: RawGuild[] = [];
   queue: QueueItem[] = [];
@@ -216,6 +271,13 @@ export class VespryController {
   /** Vrai tant qu'un `watchForToken` tourne — empêche les doublons. */
   private watching = false;
   private readonly listeners = new Set<() => void>();
+
+  constructor(deps: ControllerDeps = {}) {
+    this.transport = deps.transport ?? new RelayTransport(runtimeRelay);
+    this.pacer = deps.pacer ?? new Pacer('discreet');
+    this.readToken = deps.requestToken ?? requestToken;
+    this.readPace = deps.requestPace ?? requestPace;
+  }
 
   subscribe(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -250,13 +312,16 @@ export class VespryController {
       return;
     }
 
-    const token = await requestToken();
-    if (token) await this.loadSession(token);
+    const pace = await this.readPace();
+    if (pace) this.pacer.setMode(pace);
+
+    this.lastTriedToken = await this.readToken();
+    await this.loadSession();
     if (!this.api) {
       // Pas de session valide : on affiche « non connecté » et on surveille
-      // l'arrivée d'un jeton frais (reconnexion à Discord).
+      // l'ouverture d'un onglet Discord ou une reconnexion.
       if (!this.error) this.error = 'no-token';
-      void this.watchForToken();
+      void this.watchForSession();
     }
     this.ready = true;
     this.notify();
@@ -264,31 +329,33 @@ export class VespryController {
   }
 
   /**
-   * Charge la session Discord (utilisateur + serveurs). Renvoie `true` si la
-   * session est valide.
+   * Charge la session Discord (utilisateur + serveurs) par l'onglet Discord.
+   * Renvoie `true` si la session est valide.
    *
-   * Sur un 401, on repasse en « non connecté » (pour ne pas afficher une
-   * fausse session active) MAIS on n'efface PAS le jeton stocké : un 401
-   * passager (Cloudflare, pic) ne doit jamais faire perdre un jeton valide.
-   * `watchForToken` réessaiera ; une vraie reconnexion fera capter un jeton
-   * frais par le bridge, qui écrasera l'ancien.
+   * Plus de jeton côté moteur : les requêtes partent de la page discord.com,
+   * avec la session du client. Le jeton capté par le bridge ne sert plus que
+   * de SIGNAL de reconnexion (cf. `watchForSession`).
    */
-  private async loadSession(token: string): Promise<boolean> {
-    this.api = new DiscordApi({ token });
+  private async loadSession(): Promise<boolean> {
+    const api = new DiscordApi({ transport: this.transport, pacer: this.pacer });
     try {
-      const [user, guilds] = await Promise.all([
-        this.api.getCurrentUser(),
-        this.api.getGuilds(),
-      ]);
+      // En série : le Pacer sérialise de toute façon.
+      const user = await api.getCurrentUser();
+      const guilds = await api.getGuilds();
+      this.api = api;
       this.currentUser = user;
       this.guilds = guilds;
       this.error = null;
+      this.sessionFailure = null;
       return true;
     } catch (e) {
       this.api = null;
       this.currentUser = null;
       this.guilds = [];
-      this.error = e instanceof DiscordApiError && e.kind === 'auth'
+      this.sessionFailure = e instanceof DiscordApiError ? e.kind : 'unknown';
+      // `no-token` = « ouvre Discord et connecte-toi » côté vues.
+      this.error = e instanceof DiscordApiError
+        && (e.kind === 'auth' || e.kind === 'no-tab' || e.kind === 'no-client')
         ? 'no-token'
         : (e instanceof Error ? e.message : String(e));
       return false;
@@ -296,20 +363,28 @@ export class VespryController {
   }
 
   /**
-   * Surveille l'arrivée d'un jeton valide (premier lancement ou reconnexion
-   * après un 401). Le bridge capte le jeton dès que Discord émet une requête
-   * API ; dès qu'une session valide se charge, on notifie — rétablissement
-   * automatique. Un seul watcher à la fois (`this.watching`).
+   * Surveille le rétablissement de la session (premier lancement, onglet
+   * fermé, reconnexion). Une seule surveillance à la fois.
+   *
+   * Ne réémet JAMAIS en boucle vers Discord : sans onglet, la tentative ne
+   * sort pas du navigateur (le relais répond `no-tab`) ; après un refus
+   * (401, captcha, protection), on ne réessaie que si le jeton capté a
+   * changé, c'est-à-dire après une vraie reconnexion. L'ouverture d'un onglet
+   * relance aussi la tentative (`onDiscordTabReady`).
    */
-  private async watchForToken(): Promise<void> {
+  private async watchForSession(): Promise<void> {
     if (this.watching) return;
     this.watching = true;
     try {
       for (let i = 0; i < 240; i += 1) {
         await sleep(2500);
         if (this.api) return; // session chargée entre-temps
-        const token = await requestToken();
-        if (token && (await this.loadSession(token))) {
+        const token = await this.readToken();
+        const tokenChanged = token !== null && token !== this.lastTriedToken;
+        const noTabYet = this.sessionFailure === 'no-tab';
+        if (!tokenChanged && !noTabYet) continue;
+        this.lastTriedToken = token;
+        if (await this.loadSession()) {
           this.notify();
           void this.drain();
           return;
@@ -318,6 +393,87 @@ export class VespryController {
     } finally {
       this.watching = false;
     }
+  }
+
+  /**
+   * Un onglet Discord vient d'ouvrir son canal REST : charge la session si
+   * besoin, puis reprend ce qui attendait un onglet (runs et purges arrêtés
+   * sur `no-tab` / `no-client`). Les arrêts sur refus de Discord ne sont
+   * jamais repris ici.
+   */
+  async onDiscordTabReady(): Promise<void> {
+    if (!this.api) {
+      this.lastTriedToken = await this.readToken();
+      if (!(await this.loadSession())) {
+        this.notify();
+        return;
+      }
+    }
+    for (const item of this.queue) {
+      if (item.status !== 'paused') continue;
+      const run = await this.store.getRun(item.runId);
+      if (run?.stopReason === 'no-tab' || run?.stopReason === 'no-client') {
+        item.status = 'in_progress';
+        pushLog(item.log, `${clock()}  ↻ onglet Discord ouvert — reprise`);
+      }
+    }
+    for (const p of this.purgeQueue) {
+      if (p.status === 'failed' && p.pending.length > 0
+        && (p.stopReason === 'no-tab' || p.stopReason === 'no-client')) {
+        p.status = 'in_progress';
+        delete p.stopReason;
+        pushLog(p.log, `${clock()}  ↻ onglet Discord ouvert — reprise`);
+      }
+    }
+    this.notify();
+    void this.drain();
+    void this.drainPurge();
+  }
+
+  /** Change le rythme (réglage « Rythme »). Effet dès la requête suivante. */
+  setPace(mode: PaceMode): void {
+    this.pacer.setMode(mode);
+    this.notify();
+  }
+
+  /**
+   * Export planifié (alarme) : charge les salons et met l'export en file.
+   * `no-tab` si aucun onglet Discord n'est ouvert — l'hôte le met en attente
+   * et le relance à l'ouverture d'un onglet.
+   */
+  async fireScheduledExport(
+    guildId: string,
+    guildName: string,
+  ): Promise<'queued' | 'no-tab' | 'no-channels'> {
+    if (!this.api && !(await this.loadSession())) {
+      this.notify();
+      return this.sessionFailure === 'no-tab' || this.sessionFailure === 'no-client'
+        ? 'no-tab'
+        : 'no-channels';
+    }
+    let channels: RawChannel[];
+    try {
+      channels = await this.loadChannels(guildId);
+    } catch (e) {
+      if (isAutoResumable(e)) return 'no-tab';
+      return 'no-channels';
+    }
+    if (channels.length === 0) return 'no-channels';
+    await this.enqueue(
+      { id: guildId, name: guildName },
+      channels,
+      ALL_MEDIA,
+      {
+        includeThreads: false,
+        zones: [],
+        zoneMode: 'any',
+        incremental: true,
+        partitionSize: 0,
+        formats: [...DEFAULT_FORMATS],
+      },
+      'schedule',
+    );
+    return 'queued';
   }
 
   /**
@@ -387,34 +543,38 @@ export class VespryController {
   ): Promise<number | null> {
     if (!this.api || channelIds.length === 0) return 0;
     const isDmGuild = !guildId || guildId === '@me';
-    const counts: (number | null)[] = new Array(channelIds.length).fill(null);
-    let cursor = 0;
-    const next = (): number | null => {
-      if (cursor >= channelIds.length) return null;
-      const i = cursor;
-      cursor += 1;
-      return i;
-    };
-    const CONCURRENCY = 3;
-    const workers = Array.from(
-      { length: Math.min(CONCURRENCY, channelIds.length) },
-      async () => {
-        if (!this.api) return;
-        for (;;) {
-          const i = next();
-          if (i === null) return;
-          const id = channelIds[i];
-          if (!id) return;
-          counts[i] = isDmGuild
+    // En série, une recherche par salon, résultat gardé en cache : le pré-vol
+    // ne doit pas ressembler à un balayage (cf. BRIEF décision 7).
+    let total = 0;
+    let anyOk = false;
+    for (const id of channelIds) {
+      const key = `${guildId}:${id}`;
+      const hit = this.estimateCache.get(key);
+      let count: number | null;
+      if (hit && Date.now() - hit.at < ESTIMATE_TTL_MS) {
+        count = hit.count;
+      } else {
+        try {
+          count = isDmGuild
             ? await this.api.searchDmMessageCount(id)
             : await this.api.searchMessageCount(guildId, id);
+        } catch (e) {
+          // Arrêt net (refus, rythme, onglet fermé) : on n'insiste pas, on
+          // rend ce qu'on a. L'export lui-même s'arrêtera proprement.
+          if (isStopError(e)) {
+            recordEvent('warn', `estimateMessages interrompu : ${stopMessage(e.kind)}`);
+            break;
+          }
+          throw e;
         }
-      },
-    );
-    await Promise.all(workers);
-    const anyOk = counts.some((c) => c !== null);
-    if (!anyOk) return null;
-    return counts.reduce<number>((s, c) => s + (c ?? 0), 0);
+        this.estimateCache.set(key, { count, at: Date.now() });
+      }
+      if (count !== null) {
+        anyOk = true;
+        total += count;
+      }
+    }
+    return anyOk ? total : null;
   }
 
   /**
@@ -690,6 +850,15 @@ export class VespryController {
         // voit « X / Y supprimés » sans distinction utile.
         item.done += 1;
       } catch (e) {
+        if (isStopError(e)) {
+          // Arrêt net : le message n'a pas été traité, on le remet en tête.
+          item.pending.unshift(messageId);
+          item.stopReason = e.kind as StopKind;
+          item.status = 'failed';
+          pushLog(item.log, `${clock()}  ⏸ ${stopMessage(e.kind)}`);
+          this.notify();
+          return;
+        }
         if (e instanceof DiscordApiError) {
           if (e.kind === 'auth') {
             // Session morte — la suite est sans espoir. On stoppe la file
@@ -742,7 +911,8 @@ export class VespryController {
 
       // Throttle inter-DELETE. On le saute sur le dernier message
       // (200 ms perçues en moins à la fin).
-      if (item.pending.length > 0) await sleep(PURGE_DELAY_MS);
+      // Le délai entre deux suppressions est appliqué par le Pacer (type
+      // `delete`, 3-6 s en rythme discret) : plus de cadence fixe ici.
     }
 
     // Bilan final.
@@ -842,11 +1012,8 @@ export class VespryController {
 
   private async runItem(item: QueueItem): Promise<void> {
     if (!this.api) return;
-    // Concurrence salons adaptative : `parallelChannels` est issu du profil
-    // de performance (Phase 1) — 3 sur machine puissante, 1 sur RAM faible.
-    // Capé en interne à 3 (rate-limit Discord). On le détecte par run pour
-    // refléter une éventuelle évolution (passage en mode économie d'énergie).
-    const profile = detectPerfProfile();
+    // Un salon à la fois : plusieurs salons en parallèle sont la signature
+    // d'un aspirateur. Le Pacer sérialise de toute façon chaque requête.
     const runner = new ExportRunner(
       this.api,
       this.store,
@@ -865,7 +1032,7 @@ export class VespryController {
           this.notify();
         },
       },
-      { channelConcurrency: profile.parallelChannels },
+      { channelConcurrency: 1, preciseCount: this.pacer.currentMode === 'normal' },
     );
     let status: RunStatus;
     try {

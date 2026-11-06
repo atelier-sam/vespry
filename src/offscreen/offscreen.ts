@@ -16,7 +16,7 @@ import {
   type StateBroadcast,
   type VespryCommand,
 } from '../messaging';
-import { ALL_MEDIA, DEFAULT_FORMATS } from '../engine/checkpoint-types';
+import { SCHEDULE_NO_TAB } from '../engine/scheduled-pending';
 
 installGlobalHandlers('offscreen');
 
@@ -97,31 +97,15 @@ async function handle(command: VespryCommand): Promise<CommandResponse> {
       return url ? { ok: true, checkoutUrl: url } : { ok: true };
     }
     case 'scheduled-export-fire': {
-      // Réveil par `chrome.alarms` (Phase 3 — planification). On charge la
-      // liste des salons du guild ciblé et on enqueue un export incrémental
-      // avec les défauts utilisateur (tous médias, tous formats). Si Discord
-      // est déconnecté ou le guild plus accessible, `loadChannels()` renvoie
-      // une liste vide et on ignore silencieusement — la prochaine occurrence
-      // retentera.
-      const channels = await controller.loadChannels(command.guildId);
-      if (channels.length === 0) {
-        return { ok: false, error: 'aucun salon accessible — Discord déconnecté ?' };
-      }
-      await controller.enqueue(
-        { id: command.guildId, name: command.guildName },
-        channels,
-        ALL_MEDIA,
-        {
-          includeThreads: false,
-          zones: [],
-          zoneMode: 'any',
-          incremental: true,
-          partitionSize: 0,
-          formats: [...DEFAULT_FORMATS],
-        },
-        'schedule', // origine planifiée → badge icône 🕒
-      );
-      return { ok: true, state: controller.toState() };
+      // Réveil par `chrome.alarms`. Sans onglet Discord ouvert, rien ne part :
+      // l'hôte met le planifié en attente et le relance à l'ouverture d'un
+      // onglet (`discord-tab-ready`). Les requêtes ne partent QUE de la page.
+      const outcome = await controller.fireScheduledExport(command.guildId, command.guildName);
+      if (outcome === 'queued') return { ok: true, state: controller.toState() };
+      return {
+        ok: false,
+        error: outcome === 'no-tab' ? SCHEDULE_NO_TAB : 'aucun salon accessible — Discord déconnecté ?',
+      };
     }
     case 'purge': {
       // Phase 2 — suppression de messages. Le moteur de purge tourne ICI
@@ -135,6 +119,12 @@ async function handle(command: VespryCommand): Promise<CommandResponse> {
       );
       return { ok: true, purgeRunId, state: controller.toState() };
     }
+    case 'discord-tab-ready':
+      await controller.onDiscordTabReady();
+      return { ok: true };
+    case 'set-pace':
+      controller.setPace(command.mode);
+      return { ok: true, state: controller.toState() };
   }
 }
 

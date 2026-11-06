@@ -17,6 +17,7 @@ import type {
 } from './engine/checkpoint-types';
 import type { RawChannel, RawGuild, RawMessage, Snowflake } from './engine/types';
 import type { DonorFeed } from './donors';
+import type { PaceMode } from './engine/pacer';
 
 // --- bridge MAIN → ISOLATED (capture du jeton) ---
 
@@ -212,7 +213,14 @@ export type VespryCommand =
       channelId: Snowflake;
       channelName: string;
       messageIds: Snowflake[];
-    };
+    }
+  /**
+   * Un onglet Discord vient d'ouvrir son canal REST. Le moteur reprend les
+   * runs en pause faute d'onglet et tire un export planifié en attente.
+   */
+  | { cmd: 'discord-tab-ready' }
+  /** Change le rythme des requêtes (réglage « Rythme », persisté côté moteur). */
+  | { cmd: 'set-pace'; mode: PaceMode };
 
 /**
  * Paramètres d'un export passés à `enqueue`, hors guild/channels/media.

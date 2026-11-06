@@ -2,6 +2,8 @@
  * Content script — monde ISOLATED.
  *
  * 1. Reçoit le jeton du bridge (monde MAIN) et le persiste.
+ * 1 bis. Relaie les requêtes REST du moteur vers l'émetteur du monde MAIN
+ *    (`rest-bridge.ts`) : c'est de CETTE page que partent les requêtes Discord.
  * 2. Injecte le bouton lanceur « Vespry » — qui affiche le % d'un export en cours.
  * 3. Monte/démonte l'overlay (vue Shadow DOM) au clic.
  *
@@ -9,6 +11,9 @@
  * Ce script ne fait que piloter une vue via le RemoteController.
  */
 import { isBridgeTokenMessage, progressPct } from '../messaging';
+import { isRestRelayMessage } from '../engine/transport';
+import { RestPortClient } from './rest-relay';
+import { DISCORD_TAB_READY } from './rest-bridge-protocol';
 import { saveToken } from '../engine/auth';
 import { RemoteController } from '../ui/remote-controller';
 import { installGlobalHandlers } from '../diagnostics';
@@ -25,6 +30,24 @@ window.addEventListener('message', (event: MessageEvent) => {
   if (!isBridgeTokenMessage(event.data)) return;
   void saveToken(event.data.token).catch((e: unknown) => {
     console.error('[Vespry] échec d\'enregistrement du jeton', e);
+  });
+});
+
+// --- 1 bis. Relais REST (moteur → cet onglet → monde MAIN) ---
+const restClient = new RestPortClient({ target: window, origin: window.location.origin });
+
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (!isRestRelayMessage(message)) return undefined;
+  void restClient.request(message.req).then(sendResponse);
+  return true; // réponse asynchrone
+});
+
+// Annonce l'onglet au moteur dès que le canal MAIN est ouvert : reprise
+// automatique d'un export en pause « ouvre Discord », tir d'un planifié en attente.
+void restClient.connect().then((port) => {
+  if (!port) return;
+  chrome.runtime.sendMessage({ kind: DISCORD_TAB_READY }).catch(() => {
+    /* moteur endormi — il interrogera les onglets à son réveil */
   });
 });
 

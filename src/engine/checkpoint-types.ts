@@ -4,7 +4,7 @@
  * IndexedDB est la source de vérité : chaque lot de 100 messages y est écrit
  * immédiatement, ce qui rend l'export resumable après crash/reboot.
  */
-import type { RawMessage, Snowflake } from './types';
+import type { RawMessage, Snowflake, StopKind } from './types';
 
 export type RunStatus =
   | 'in_progress'
@@ -259,6 +259,12 @@ export interface ExportRun {
   updatedAt: number;
   /** Message d'erreur si `status` vaut `failed`/`paused`. */
   error?: string;
+  /**
+   * Raison d'un arrêt net (`paused`) venu de Discord ou du transport. Seuls
+   * `no-tab` / `no-client` sont repris automatiquement à l'ouverture d'un
+   * onglet Discord ; les autres attendent un geste de l'utilisateur.
+   */
+  stopReason?: StopKind;
 }
 
 /** Progression d'un salon dans un run — porte le curseur de reprise. */

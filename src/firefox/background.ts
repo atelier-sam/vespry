@@ -42,7 +42,11 @@ import { getToken } from '../engine/auth';
 import { installGlobalHandlers, recordEvent } from '../diagnostics';
 import { loadCredits } from '../credits';
 import { createCheckout, fetchDonorFeed } from '../donors';
-import { ALL_MEDIA, DEFAULT_FORMATS } from '../engine/checkpoint-types';
+import { SCHEDULE_NO_TAB, markPending, takePending } from '../engine/scheduled-pending';
+import { GET_PACE_KIND, PACE_STORAGE_KEY, readPace } from '../engine/pace-setting';
+import { RelayTransport } from '../engine/relay-transport';
+import { chromeTabApi, relayRestToTab } from '../background/tab-relay';
+import { DISCORD_TAB_READY } from '../content/rest-bridge-protocol';
 import {
   SCHEDULE_STORAGE_KEY,
   SCHEDULED_EXPORT_ALARM_NAME,
@@ -73,7 +77,12 @@ const DISCORD_URL = 'https://discord.com/channels/@me';
 // qui survit à la fermeture de l'onglet Discord. Le contrôleur s'initialise
 // au chargement, et le port persistant ouvert par l'overlay (cf. ci-dessous)
 // garantit que la page reste vivante pendant un run.
-const controller = new VespryController();
+// Pas de service worker entre le moteur et les onglets : l'event page a
+// `chrome.tabs`, elle relaie elle-même chaque requête à l'onglet Discord.
+const controller = new VespryController({
+  transport: new RelayTransport((req) => relayRestToTab(chromeTabApi, req)),
+  requestPace: () => readPace(chrome.storage.local),
+});
 
 /** Diffuse l'état courant aux vues abonnées (popup, overlay). */
 function broadcast(): void {
@@ -170,6 +179,11 @@ async function onScheduledAlarmFire(): Promise<void> {
     await chrome.storage.local.set({
       'vespry.scheduled': { ...schedule, lastFiredAt: Date.now() },
     });
+  } else if (result.error === SCHEDULE_NO_TAB) {
+    await markPending(chrome.storage.local, {
+      guildId: schedule.guildId, guildName: schedule.guildName, since: Date.now(),
+    });
+    notify('Export planifié en attente', `${schedule.guildName} : ouvre Discord pour le lancer.`);
   } else {
     // Échec non bloquant : la prochaine occurrence (24 h / 7 j) retentera.
     notify(
@@ -248,33 +262,23 @@ async function exec(command: VespryCommand): Promise<CommandResponse> {
       );
       return { ok: true, purgeRunId, state: controller.toState() };
     }
-    case 'scheduled-export-fire': {
-      // Phase 3 — la planification déclenche un export incrémental depuis
-      // ce contexte (background event page côté Firefox). Logique identique
-      // au handler `offscreen.ts` côté Chrome : on charge la liste des salons
-      // du guild ciblé puis on enqueue un export incrémental avec les défauts
-      // utilisateur (tous médias, formats JSON+HTML). Si Discord est
-      // déconnecté, `loadChannels()` renvoie une liste vide et on ignore
-      // silencieusement — la prochaine occurrence (24 h / 7 j) retentera.
-      const channels = await controller.loadChannels(command.guildId);
-      if (channels.length === 0) {
-        return { ok: false, error: 'aucun salon accessible — Discord déconnecté ?' };
-      }
-      await controller.enqueue(
-        { id: command.guildId, name: command.guildName },
-        channels,
-        ALL_MEDIA,
-        {
-          includeThreads: false,
-          zones: [],
-          zoneMode: 'any',
-          incremental: true,
-          partitionSize: 0,
-          formats: [...DEFAULT_FORMATS],
-        },
-        'schedule', // origine planifiée → badge icône 🕒
-      );
+    case 'discord-tab-ready':
+      await controller.onDiscordTabReady();
+      return { ok: true };
+    case 'set-pace':
+      controller.setPace(command.mode);
+      await chrome.storage.local.set({ [PACE_STORAGE_KEY]: command.mode });
       return { ok: true, state: controller.toState() };
+    case 'scheduled-export-fire': {
+      // Réveil par `chrome.alarms`. Sans onglet Discord ouvert, rien ne part :
+      // le planifié est mis en attente et relancé à l'ouverture d'un onglet
+      // (`discord-tab-ready`). Les requêtes ne partent QUE de la page.
+      const outcome = await controller.fireScheduledExport(command.guildId, command.guildName);
+      if (outcome === 'queued') return { ok: true, state: controller.toState() };
+      return {
+        ok: false,
+        error: outcome === 'no-tab' ? SCHEDULE_NO_TAB : 'aucun salon accessible — Discord déconnecté ?',
+      };
     }
     case 'checkout': {
       const credits = await loadCredits();
@@ -368,7 +372,32 @@ async function relayToDiscordTabs(message: unknown): Promise<void> {
 
 // --- routeur de messages (vues → background) ---
 
+/** Onglet Discord prêt : reprises automatiques + planifié en attente. */
+async function onDiscordTabReady(): Promise<void> {
+  await controller.onDiscordTabReady();
+  const pending = await takePending(chrome.storage.local);
+  if (!pending) return;
+  const result = await exec({
+    cmd: 'scheduled-export-fire', guildId: pending.guildId, guildName: pending.guildName,
+  });
+  if (!result.ok && result.error === SCHEDULE_NO_TAB) {
+    await markPending(chrome.storage.local, pending); // toujours pas prêt : on garde
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (typeof message === 'object' && message !== null
+    && (message as { kind?: unknown }).kind === DISCORD_TAB_READY) {
+    void onDiscordTabReady();
+    return false;
+  }
+  if (typeof message === 'object' && message !== null
+    && (message as { kind?: unknown }).kind === GET_PACE_KIND) {
+    readPace(chrome.storage.local).then((mode) => sendResponse({ mode })).catch(() => {
+      sendResponse({ mode: null });
+    });
+    return true;
+  }
   // Sur Firefox, l'overlay/popup envoient TOUJOURS un `vespry-command` —
   // c'est le contrat unifié. Le moteur étant ici, on exécute directement.
   if (isCommandEnvelope(message)) {

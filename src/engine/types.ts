@@ -238,7 +238,33 @@ export interface ActiveThreadsResponse {
 
 // --- Erreurs ---
 
-export type DiscordErrorKind = 'auth' | 'forbidden' | 'not_found' | 'network' | 'unknown';
+export type DiscordErrorKind =
+  | 'auth'
+  | 'forbidden'
+  | 'not_found'
+  | 'network'
+  | 'unknown'
+  /** Discord a refusé (403 hors accès manquant, captcha, pas de réponse). */
+  | 'refused'
+  /** Réponse d'erreur non-JSON : page de protection anti-robot. */
+  | 'blocked'
+  /** 429 long ou répété. */
+  | 'rate-limited'
+  /** Aucun onglet discord.com prêt à émettre. */
+  | 'no-tab'
+  /** Onglet ouvert mais client Discord pas encore prêt. */
+  | 'no-client';
+
+/**
+ * Erreurs qui imposent l'ARRÊT du run (mis en pause, reprenable) : on ne
+ * relance pas, on ne les avale pas. `auth` en fait partie depuis toujours.
+ */
+const STOP_KINDS: ReadonlySet<DiscordErrorKind> = new Set([
+  'auth', 'refused', 'blocked', 'rate-limited', 'no-tab', 'no-client',
+]);
+
+/** Reprise automatique possible dès qu'un onglet Discord est prêt. */
+const AUTO_RESUME_KINDS: ReadonlySet<DiscordErrorKind> = new Set(['no-tab', 'no-client']);
 
 export class DiscordApiError extends Error {
   constructor(
@@ -249,4 +275,39 @@ export class DiscordApiError extends Error {
     super(message);
     this.name = 'DiscordApiError';
   }
+}
+
+export function isStopError(e: unknown): e is DiscordApiError {
+  return e instanceof DiscordApiError && STOP_KINDS.has(e.kind);
+}
+
+/** Raison d'arrêt net d'un run ou d'une purge (cf. `STOP_KINDS`). */
+export type StopKind = 'auth' | 'refused' | 'blocked' | 'rate-limited' | 'no-tab' | 'no-client';
+
+/**
+ * Message affiché pour un arrêt net. Le moteur ne relance jamais seul après
+ * `refused` / `blocked` / `rate-limited` : Discord vient de dire non, insister
+ * est exactement ce qui fait sanctionner un compte.
+ */
+export function stopMessage(kind: DiscordErrorKind): string {
+  switch (kind) {
+    case 'auth':
+      return 'Session Discord expirée — reconnecte-toi puis reprends';
+    case 'refused':
+      return 'Discord a refusé une requête (vérification ou blocage) — attends quelques heures avant de reprendre';
+    case 'blocked':
+      return 'Discord a renvoyé une page de protection — attends quelques heures avant de reprendre';
+    case 'rate-limited':
+      return 'Discord demande de ralentir — attends au moins une heure avant de reprendre';
+    case 'no-tab':
+      return 'Ouvre Discord dans un onglet pour continuer — reprise automatique';
+    case 'no-client':
+      return 'Discord n\'a pas fini de charger — reprise automatique';
+    default:
+      return 'Arrêt';
+  }
+}
+
+export function isAutoResumable(e: unknown): boolean {
+  return e instanceof DiscordApiError && AUTO_RESUME_KINDS.has(e.kind);
 }

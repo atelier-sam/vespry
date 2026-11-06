@@ -314,5 +314,21 @@
   "stop.blocked": "Discord returned a protection page. Wait a few hours before resuming.",
   "stop.rate-limited": "Discord is asking to slow down. Wait at least an hour before resuming.",
   "stop.no-tab": "Open Discord in a tab to continue: it resumes automatically.",
-  "stop.no-client": "Discord hasn’t finished loading: it resumes automatically."
+  "stop.no-client": "Discord hasn’t finished loading: it resumes automatically.",
+  "idx.title": "Discord export — {guild}",
+  "idx.channels": "Channels:",
+  "idx.messages": "Messages:",
+  "idx.media_downloaded": "Media downloaded:",
+  "idx.how_title": "How to read",
+  "idx.read_html": "`html/<channel>.html` — readable page, Discord-style. Open it in a browser.",
+  "idx.read_json": "`json/<channel>.json` — one file per channel, messages in chronological order. Each message has `id`, `timestamp`, `author`, `content`, `attachments`, `embeds`, `reactions`, `mentions`, `message_reference` (= a reply to an original message). Downloaded media carry a `localPath` field.",
+  "idx.read_tabular": "`csv/<channel>.csv` — spreadsheet. `txt/<channel>.txt` — plain text.",
+  "idx.read_media": "`media/` images · `video/` videos · `audio/` audio · `files/` other files — sorted by channel.",
+  "idx.read_manifest": "`manifest.json` — statistics.",
+  "idx.read_schema": "Full format: [`docs/SCHEMA.md`]({url}).",
+  "idx.channels_title": "Channels",
+  "idx.col_channel": "Channel",
+  "idx.col_messages": "Messages",
+  "idx.col_media": "Media",
+  "idx.col_files": "Files"
 }

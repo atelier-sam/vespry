@@ -314,5 +314,21 @@
   "stop.blocked": "Discord a renvoyé une page de protection. Attends quelques heures avant de reprendre.",
   "stop.rate-limited": "Discord demande de ralentir. Attends au moins une heure avant de reprendre.",
   "stop.no-tab": "Ouvre Discord dans un onglet pour continuer : la reprise est automatique.",
-  "stop.no-client": "Discord n’a pas fini de charger : la reprise est automatique."
+  "stop.no-client": "Discord n’a pas fini de charger : la reprise est automatique.",
+  "idx.title": "Export Discord — {guild}",
+  "idx.channels": "Salons :",
+  "idx.messages": "Messages :",
+  "idx.media_downloaded": "Médias téléchargés :",
+  "idx.how_title": "Comment lire",
+  "idx.read_html": "`html/<salon>.html` — page lisible façon Discord, à ouvrir dans un navigateur.",
+  "idx.read_json": "`json/<salon>.json` — un fichier par salon, messages chronologiques. Chaque message : `id`, `timestamp`, `author`, `content`, `attachments`, `embeds`, `reactions`, `mentions`, `message_reference` (= réponse à un message d'origine). Les médias téléchargés portent un champ `localPath`.",
+  "idx.read_tabular": "`csv/<salon>.csv` — tableur. `txt/<salon>.txt` — texte brut.",
+  "idx.read_media": "`media/` images · `video/` vidéos · `audio/` audio · `files/` autres fichiers — rangés par salon.",
+  "idx.read_manifest": "`manifest.json` — statistiques.",
+  "idx.read_schema": "Format complet : [`docs/SCHEMA.md`]({url}).",
+  "idx.channels_title": "Salons",
+  "idx.col_channel": "Salon",
+  "idx.col_messages": "Messages",
+  "idx.col_media": "Médias",
+  "idx.col_files": "Fichiers"
 }

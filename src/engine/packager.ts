@@ -812,6 +812,17 @@ async function* generateFormat(args: {
   if (acc.length > 0) yield flush(acc);
 }
 
+/**
+ * INDEX.md du zip — mode d'emploi + table des salons, dans la langue de
+ * l'interface (même `t()` que les libellés `exp.*` des exports).
+ *
+ * Les TEXTES passent par les clés `idx.*` ; ce qui est un contrat du
+ * format reste ici, en dur : l'ossature Markdown, les noms de dossiers
+ * (`json/`, `media/`…) et de champs (`localPath`, `message_reference`…)
+ * que `locales.test.ts` vérifie présents dans chaque traduction, et l'URL
+ * de `docs/SCHEMA.md` (même constante que le `$schema` des JSON). Un agent
+ * IA qui lit l'INDEX doit retrouver les mêmes noms quelle que soit la langue.
+ */
 function buildIndex(
   guild: string,
   stats: ChannelStat[],
@@ -819,28 +830,24 @@ function buildIndex(
   assets: number,
 ): string {
   const lines = [
-    `# Export Discord — ${guild}`,
+    `# ${t('idx.title', { guild })}`,
     '',
-    `- Salons : **${stats.length}**`,
-    `- Messages : **${totalMessages}**`,
-    `- Médias téléchargés : **${assets}**`,
+    `- ${t('idx.channels')} **${stats.length}**`,
+    `- ${t('idx.messages')} **${totalMessages}**`,
+    `- ${t('idx.media_downloaded')} **${assets}**`,
     '',
-    '## Comment lire',
+    `## ${t('idx.how_title')}`,
     '',
-    '- `html/<salon>.html` — page lisible façon Discord, à ouvrir dans un',
-    '  navigateur.',
-    '- `json/<salon>.json` — un fichier par salon, messages chronologiques.',
-    "  Chaque message : `id`, `timestamp`, `author`, `content`, `attachments`,",
-    '  `embeds`, `reactions`, `mentions`, `message_reference` (= réponse à un',
-    "  message d'origine). Les médias téléchargés portent un champ `localPath`.",
-    '- `csv/<salon>.csv` — tableur. `txt/<salon>.txt` — texte brut.',
-    '- `media/` images · `video/` vidéos · `audio/` audio · `files/` autres',
-    '  fichiers — rangés par salon.',
-    '- `manifest.json` — statistiques.',
+    `- ${t('idx.read_html')}`,
+    `- ${t('idx.read_json')}`,
+    `- ${t('idx.read_tabular')}`,
+    `- ${t('idx.read_media')}`,
+    `- ${t('idx.read_manifest')}`,
+    `- ${t('idx.read_schema', { url: JSON_SCHEMA_URL })}`,
     '',
-    '## Salons',
+    `## ${t('idx.channels_title')}`,
     '',
-    '| Salon | Messages | Médias | Fichiers |',
+    `| ${t('idx.col_channel')} | ${t('idx.col_messages')} | ${t('idx.col_media')} | ${t('idx.col_files')} |`,
     '|---|--:|--:|---|',
     ...stats.map(
       (c) =>

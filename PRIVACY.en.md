@@ -93,10 +93,11 @@ and GitHub. The donation service logs neither IP nor identifier.
 
 ### 5. Version check
 
-When you open the extension menu, Vespry queries
-`https://api.github.com/repos/atelier-sam/vespry/releases/latest` to know
-whether a newer version exists. Anonymous request, no Discord data. If it
-fails, nothing is shown.
+Installed from a store (Chrome Web Store, Edge, Firefox), Vespry makes no
+check: the store updates it. Installed by hand (developer mode), it queries
+`https://api.github.com/repos/atelier-sam/vespry/releases/latest` when you
+open the extension menu, to know whether a newer version exists. Anonymous
+request, no Discord data. If it fails, nothing is shown.
 
 ### 6. Report a problem (only if you click)
 

@@ -97,10 +97,12 @@ journalise ni IP ni identifiant.
 
 ### 5. Vérification de version
 
-À l'ouverture du menu de l'extension, Vespry interroge
-`https://api.github.com/repos/atelier-sam/vespry/releases/latest` pour
-savoir si une nouvelle version existe. Requête anonyme, sans aucune donnée
-Discord. En cas d'échec, rien ne s'affiche.
+Installé depuis un store (Chrome Web Store, Edge, Firefox), Vespry ne fait
+aucune vérification : le store le met à jour. Installé à la main (mode
+développeur), il interroge à l'ouverture du menu
+`https://api.github.com/repos/atelier-sam/vespry/releases/latest` pour savoir
+si une nouvelle version existe. Requête anonyme, sans aucune donnée Discord.
+En cas d'échec, rien ne s'affiche.
 
 ### 6. Signaler un problème (seulement si tu cliques)
 

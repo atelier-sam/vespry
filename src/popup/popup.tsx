@@ -71,7 +71,8 @@ function Popup(): JSX.Element {
     // storage (l'utilisateur peut le modifier depuis l'overlay pendant
     // que le popup est ouvert ; cas rare mais propre).
     void loadSchedule(chrome.storage.local).then(setSchedule);
-    // Notif d'update : silencieux si pas de release plus récente, sinon
+    // Notif d'update (installations hors store seulement, cf. isStoreInstall) :
+    // silencieux si pas de release plus récente, sinon
     // bannière. L'utilisateur clique pour ouvrir la release GitHub.
     // Pingue api.github.com (cf. PRIVACY.md § 6 — sortie réseau auxiliaire).
     void checkForUpdate().then(setLatestVersion);

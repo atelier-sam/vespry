@@ -22,7 +22,8 @@ import { useEffect, useState } from 'preact/hooks';
 import type { PurgeItemView } from '../../messaging';
 import type { RemoteController } from '../../ui/remote-controller';
 import type { RawChannel, RawGuild } from '../../engine/types';
-import { t } from '../../ui/i18n';
+import { currentLocale, t } from '../../ui/i18n';
+import { confirmWordMatches } from '../../ui/confirm-word';
 import { PaceSetting } from './PaceSetting';
 
 interface Props {
@@ -73,7 +74,7 @@ export function PurgeModal({
 
   // Verrou d'arrêt posé (Discord a refusé) : pas de suppression tant que
   // l'utilisateur n'a pas levé le verrou depuis le bandeau du panneau.
-  const canConfirm = typed.trim() === confirmWord && !submitting && purgeId === null
+  const canConfirm = confirmWordMatches(typed, confirmWord, currentLocale()) && !submitting && purgeId === null
     && controller.halt === null;
   const total = messageIds.length;
 

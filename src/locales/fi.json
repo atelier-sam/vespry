@@ -91,6 +91,7 @@
   "queue.resume": "Jatka",
   "queue.zipping": "Preparing the archive…",
   "queue.download": "Lataa .zip",
+  "queue.zip_unavailable": "Salattua arkistoa ei säilytetty: käynnistä vienti uudelleen",
   "queue.waiting": "odottaa…",
   "status.in_progress": "KÄYNNISSÄ",
   "status.paused": "KESKEYTETTY",

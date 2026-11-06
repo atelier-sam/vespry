@@ -26,6 +26,8 @@ import { DISCORD_TAB_READY } from '../content/rest-bridge-protocol';
 import { SCHEDULE_NO_TAB, markPending, takePending } from '../engine/scheduled-pending';
 import { GET_PACE_KIND, PACE_STORAGE_KEY, readPace } from '../engine/pace-setting';
 import { installGlobalHandlers, recordEvent } from '../diagnostics';
+import { isSchemaReportMessage, maybeSendSchemaReport } from '../engine/schema-report';
+import { loadCredits } from '../credits';
 import {
   SCHEDULE_STORAGE_KEY,
   SCHEDULED_EXPORT_ALARM_NAME,
@@ -347,7 +349,18 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     return false;
   }
   if (isDoDownload(message)) {
-    void chrome.downloads.download({ url: message.url, filename: message.filename });
+    // Réponse après le lancement : l'offscreen libère l'URL du blob ensuite.
+    chrome.downloads.download({ url: message.url, filename: message.filename })
+      .then(() => sendResponse({ ok: true }))
+      .catch((e: unknown) => sendResponse({ ok: false, error: String(e) }));
+    return true;
+  }
+  if (isSchemaReportMessage(message)) {
+    // L'offscreen n'a pas chrome.storage : l'opt-in se lit ici. L'URL du
+    // service vient des crédits, jamais du message.
+    void loadCredits()
+      .then((c) => maybeSendSchemaReport(c.donorApiUrl, message.fields))
+      .catch(() => { /* crédits illisibles — sans gravité */ });
     return false;
   }
   if (isGetToken(message)) {

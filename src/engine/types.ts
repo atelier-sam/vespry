@@ -231,9 +231,10 @@ export interface RawMessage {
   call?: { participants: Snowflake[]; ended_timestamp?: string | null };
 }
 
-/** Réponse de GET /guilds/{id}/threads/active. */
-export interface ActiveThreadsResponse {
+/** Réponse de GET /channels/{id}/threads/search (recherche de fils du client). */
+export interface ThreadSearchResponse {
   threads: RawChannel[];
+  has_more?: boolean;
 }
 
 // --- Erreurs ---

@@ -25,7 +25,16 @@ describe('DiscordApi — émission', () => {
   it('getMessages construit le curseur before', async () => {
     const t = new FakeTransport([ok([])]);
     await apiWith(t).getMessages('11', '12345');
-    expect(t.calls[0]?.path).toBe('/channels/11/messages?limit=100&before=12345');
+    expect(t.calls[0]?.path).toBe('/channels/11/messages?before=12345&limit=100');
+  });
+
+  it('searchArchivedThreads : requête identique au navigateur de fils du client', async () => {
+    const t = new FakeTransport([ok({ threads: [{ id: '7', type: 11 }], has_more: true })]);
+    const res = await apiWith(t).searchArchivedThreads('11', 25);
+    expect(t.calls[0]?.path).toBe(
+      '/channels/11/threads/search?archived=true&sort_by=last_message_time&sort_order=desc&limit=25&offset=25',
+    );
+    expect(res).toEqual({ threads: [{ id: '7', type: 11 }], hasMore: true });
   });
 
   it('un salon à la fois : deux appels concurrents ne sont jamais en vol ensemble', async () => {

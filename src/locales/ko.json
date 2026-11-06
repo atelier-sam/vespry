@@ -91,6 +91,7 @@
   "queue.resume": "재개",
   "queue.zipping": "Preparing the archive…",
   "queue.download": ".zip 다운로드",
+  "queue.zip_unavailable": "암호화된 압축 파일은 보관되지 않습니다: 내보내기를 다시 실행하세요",
   "queue.waiting": "대기 중…",
   "status.in_progress": "진행 중",
   "status.paused": "일시정지",

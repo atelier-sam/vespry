@@ -14,19 +14,45 @@ interface FakeWin {
   [k: string]: unknown;
 }
 
-/** Registre webpack minimal : `push` appelle le 3e élément avec `require`. */
-function webpackWith(exportsList: unknown[]): unknown[] {
-  const cache: Record<string, { exports: unknown }> = {};
-  exportsList.forEach((exp, i) => { cache[String(i)] = { exports: exp }; });
+/** Fabrique de module factice : son code source porte (ou non) la marque du module HTTP. */
+const MARKED = function marked() { return 'if(t.oldFormErrors&&a?.body?.code===50035){}'; };
+const UNMARKED = function unmarked() { return 'rien'; };
+
+interface FakeRuntime { exportsList: unknown[]; marked?: boolean }
+
+/**
+ * Registre webpack factice : `push` appelle le 3e élément avec le `require`
+ * de CHAQUE runtime, dans l'ordre, comme les runtimes chaînés de Discord.
+ */
+function webpackRuntimes(runtimes: FakeRuntime[]): unknown[] {
+  const reqs = runtimes.map(({ exportsList, marked = true }) => {
+    const c: Record<string, { exports: unknown }> = {};
+    const m: Record<string, unknown> = {};
+    exportsList.forEach((exp, i) => {
+      c[String(i)] = { exports: exp };
+      m[String(i)] = marked ? MARKED : UNMARKED;
+    });
+    return { c, m };
+  });
   const arr: unknown[] = [];
   arr.push = (...items: unknown[]): number => {
     for (const item of items) {
       const cb = (item as unknown[])[2];
-      if (typeof cb === 'function') (cb as (r: unknown) => void)({ c: cache });
+      if (typeof cb === 'function') for (const r of reqs) (cb as (r: unknown) => void)(r);
     }
     return arr.length;
   };
   return arr;
+}
+
+/** Un seul runtime, modules marqués. */
+function webpackWith(exportsList: unknown[]): unknown[] {
+  return webpackRuntimes([{ exportsList }]);
+}
+
+/** Module HTTP factice à la forme du vrai (`Bo` du client, 06/11/2026). */
+function restModule(over: Partial<Record<'get' | 'post' | 'put' | 'patch' | 'del', unknown>> = {}) {
+  return { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), del: vi.fn(), ...over };
 }
 
 let win: FakeWin;
@@ -78,19 +104,136 @@ describe('rest-bridge — voie 1 : module REST du client', () => {
 
   it('rejet du client avec statut (429) → réponse normalisée avec retry_after', async () => {
     const get = vi.fn(async () => { throw { status: 429, body: { retry_after: 3.5 } }; });
-    win.webpackChunkdiscord_app = webpackWith([{ get, del: vi.fn(), put: vi.fn(), patch: vi.fn() }]);
+    win.webpackChunkdiscord_app = webpackWith([restModule({ get })]);
     const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, { method: 'GET', path: '/users/@me' });
     expect(r).toMatchObject({ ok: true, res: { status: 429, retryAfterSec: 3.5, via: 'client' } });
   });
 
-  it('DELETE passe par `del`, réponse sans corps → 204', async () => {
-    const del = vi.fn(async () => undefined);
-    win.webpackChunkdiscord_app = webpackWith([{ get: vi.fn(), del, put: vi.fn(), patch: vi.fn() }]);
+  it('DELETE passe par `del` (le module rend { ok, status: 204 })', async () => {
+    const del = vi.fn(async () => ({ ok: true, status: 204, body: null }));
+    win.webpackChunkdiscord_app = webpackWith([restModule({ del })]);
     const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, {
       method: 'DELETE', path: '/channels/1/messages/2',
     });
     expect(del).toHaveBeenCalled();
     expect(r).toMatchObject({ ok: true, res: { status: 204 } });
+  });
+
+  // Essai réel du 06/11/2026 : l'ancienne règle rendait un « 204 vide » pour
+  // toute résolution qui n'était pas un objet. Une lecture ratée passait pour
+  // un salon sans message.
+  it('résolution qui n\'est pas un objet → panne bridge, jamais un succès vide, jamais rejouée', async () => {
+    const get = vi.fn(async () => 'une chaîne de traduction');
+    win.webpackChunkdiscord_app = webpackWith([restModule({ get })]);
+    const f = vi.fn();
+    const r = await bridge.executeRest(f as unknown as typeof fetch, { method: 'GET', path: '/channels/1/messages' });
+    expect(r).toMatchObject({ ok: false, failure: 'bridge' });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
+// Essai réel du 06/11/2026 sur la page Discord : 4 runtimes webpack sur le
+// même tableau, le module HTTP dans le premier, un runtime annexe de 102
+// modules en dernier ; 92 proxys de traduction qui rendent une fonction pour
+// n'importe quelle clé.
+describe('rest-bridge — identification du module HTTP du client', () => {
+  function headersSeen(): void {
+    bridge.observeClientHeader('authorization', 't');
+    bridge.observeClientHeader('x-super-properties', 's');
+  }
+  const okFetch = () => vi.fn(async () => new Response('{"id":"1"}', { status: 200 }));
+  /** Le premier repli paie l'attente unique du module (10 s) : horloge simulée. */
+  async function execAfterWait(f: unknown, req: unknown): Promise<RestRelayReply> {
+    vi.useFakeTimers();
+    const p = bridge.executeRest(f as typeof fetch, req);
+    await vi.advanceTimersByTimeAsync(10_500);
+    return p;
+  }
+
+  it('module dans le PREMIER runtime, runtime annexe en dernier → voie client', async () => {
+    const get = vi.fn(async () => ({ ok: true, status: 200, body: { id: '1' } }));
+    win.webpackChunkdiscord_app = webpackRuntimes([
+      { exportsList: [{ other: 1 }, { Bo: restModule({ get }) }] },
+      { exportsList: [] },
+      { exportsList: [{ annexe: true }] },
+    ]);
+    const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, { method: 'GET', path: '/users/@me' });
+    expect(r).toMatchObject({ ok: true, res: { status: 200, via: 'client' } });
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('proxy de traduction (une fonction pour toute clé) → jamais appelé, repli fetch', async () => {
+    const touched: string[] = [];
+    const proxyCall = vi.fn(() => 'texte');
+    const i18n = new Proxy({}, {
+      get: (_t, k) => { touched.push(String(k)); return proxyCall; },
+    });
+    win.webpackChunkdiscord_app = webpackWith([{ default: i18n }]);
+    headersSeen();
+    const f = okFetch();
+    const r = await execAfterWait(f, { method: 'GET', path: '/users/@me' });
+    expect(r).toMatchObject({ ok: true, res: { via: 'fetch' } });
+    expect(proxyCall).not.toHaveBeenCalled();
+    // Aucune clé lue sur le proxy : on ne laisse pas de trace dans le cache de traduction.
+    expect(touched).toEqual([]);
+  });
+
+  it('bonne forme mais module sans la marque oldFormErrors → repli fetch', async () => {
+    const get = vi.fn();
+    win.webpackChunkdiscord_app = webpackRuntimes([{ exportsList: [restModule({ get })], marked: false }]);
+    headersSeen();
+    const f = okFetch();
+    const r = await execAfterWait(f, { method: 'GET', path: '/users/@me' });
+    expect(r).toMatchObject({ ok: true, res: { via: 'fetch' } });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('verbes en accesseurs (pas des données) → refusé', async () => {
+    const get = vi.fn();
+    const sneaky = restModule();
+    Object.defineProperty(sneaky, 'get', { get: () => get, enumerable: true });
+    win.webpackChunkdiscord_app = webpackWith([sneaky]);
+    headersSeen();
+    const r = await execAfterWait(okFetch(), { method: 'GET', path: '/users/@me' });
+    expect(r).toMatchObject({ ok: true, res: { via: 'fetch' } });
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('module évalué APRÈS la première requête → attendu, voie client (jamais le repli)', async () => {
+    vi.useFakeTimers();
+    const get = vi.fn(async () => ({ ok: true, status: 200, body: {} }));
+    const late: unknown[] = [{ other: 1 }];
+    win.webpackChunkdiscord_app = webpackWith(late);
+    const f = vi.fn();
+    const p = bridge.executeRest(f as unknown as typeof fetch, { method: 'GET', path: '/users/@me' });
+    await vi.advanceTimersByTimeAsync(2_000);
+    // Le client évalue son module HTTP pendant l'attente.
+    win.webpackChunkdiscord_app = webpackWith([...late, { Bo: restModule({ get }) }]);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await p).toMatchObject({ ok: true, res: { via: 'client' } });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('attente payée UNE fois : module introuvable → la requête suivante part aussitôt par le repli', async () => {
+    win.webpackChunkdiscord_app = webpackWith([{ other: 1 }]);
+    headersSeen();
+    const f = okFetch();
+    expect(await execAfterWait(f, { method: 'GET', path: '/users/@me' })).toMatchObject({ ok: true, res: { via: 'fetch' } });
+    vi.useRealTimers();
+    const t0 = Date.now();
+    expect(await bridge.executeRest(f as unknown as typeof fetch, { method: 'GET', path: '/users/@me' }))
+      .toMatchObject({ ok: true, res: { via: 'fetch' } });
+    expect(Date.now() - t0).toBeLessThan(1_000);
+  });
+
+  it('un export dont l\'accesseur lève (liaison circulaire) ne casse pas la recherche', async () => {
+    const get = vi.fn(async () => ({ ok: true, status: 200, body: {} }));
+    const broken = {};
+    Object.defineProperty(broken, 'X', { get: () => { throw new ReferenceError('TDZ'); }, enumerable: true });
+    win.webpackChunkdiscord_app = webpackWith([broken, { Bo: restModule({ get }) }]);
+    const r = await bridge.executeRest(neverFetch as unknown as typeof fetch, { method: 'GET', path: '/users/@me' });
+    expect(r).toMatchObject({ ok: true, res: { via: 'client' } });
   });
 });
 
@@ -133,7 +276,7 @@ describe('rest-bridge — voie 1 sans double envoi', () => {
   // n'est pas partie. Pas de repli fetch derrière.
   it('rejet du client SANS statut → panne bridge, jamais rejouée par fetch', async () => {
     const del = vi.fn(async () => { throw new Error('forme inattendue'); });
-    win.webpackChunkdiscord_app = webpackWith([{ get: vi.fn(), del, put: vi.fn(), patch: vi.fn() }]);
+    win.webpackChunkdiscord_app = webpackWith([restModule({ del })]);
     const f = vi.fn();
     const r = await bridge.executeRest(f as unknown as typeof fetch, {
       method: 'DELETE', path: '/channels/1/messages/2',
@@ -199,8 +342,8 @@ describe('rest-bridge — compte lié', () => {
   const OTHER = '876543210987654321';
   const tokenOf = (id: string): string => `${btoa(id).replace(/=+$/, '')}.GzAbCd.secretpart`;
 
-  function clientWith(del = vi.fn(async () => undefined)) {
-    win.webpackChunkdiscord_app = webpackWith([{ get: vi.fn(async () => ({ status: 200, body: [] })), del, put: vi.fn(), patch: vi.fn() }]);
+  function clientWith(del = vi.fn(async () => ({ ok: true, status: 204, body: null }))) {
+    win.webpackChunkdiscord_app = webpackWith([restModule({ get: vi.fn(async () => ({ status: 200, body: [] })), del })]);
     return del;
   }
 

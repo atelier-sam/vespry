@@ -91,6 +91,7 @@
   "queue.resume": "Sürdür",
   "queue.zipping": "Preparing the archive…",
   "queue.download": ".zip indir",
+  "queue.zip_unavailable": "Şifreli arşiv saklanmadı: dışa aktarmayı yeniden başlat",
   "queue.waiting": "bekliyor…",
   "status.in_progress": "ÇALIŞIYOR",
   "status.paused": "DURAKLATILDI",

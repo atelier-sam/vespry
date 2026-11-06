@@ -243,6 +243,13 @@ export interface ExportOptions {
    * dans la UI.
    */
   zipPassword?: string;
+  /**
+   * Le paquet de ce run était chiffré, et son mot de passe a été effacé du
+   * checkpoint une fois le paquet fabriqué (`forgetZipPassword`). Le paquet
+   * ne peut donc plus être refait : `packageRun` refuse plutôt que de sortir
+   * une archive EN CLAIR à la place de l'archive chiffrée demandée.
+   */
+  encrypted?: boolean;
 }
 
 /** Tailles de partition proposées (messages/fichier). 0 = pas de découpage. */

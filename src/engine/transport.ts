@@ -91,12 +91,13 @@ const ALLOWED: ReadonlyArray<{ method: TransportMethod; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/users\/@me\/guilds$/ },
   { method: 'GET', pattern: /^\/users\/@me\/channels$/ },
   { method: 'GET', pattern: new RegExp(`^/guilds/${SNOWFLAKE}/channels$`) },
-  { method: 'GET', pattern: new RegExp(`^/guilds/${SNOWFLAKE}/threads/active$`) },
   { method: 'GET', pattern: new RegExp(`^/guilds/${SNOWFLAKE}/messages/search$`) },
   { method: 'GET', pattern: new RegExp(`^/channels/${SNOWFLAKE}$`) },
   { method: 'GET', pattern: new RegExp(`^/channels/${SNOWFLAKE}/messages$`) },
   { method: 'GET', pattern: new RegExp(`^/channels/${SNOWFLAKE}/messages/search$`) },
-  { method: 'GET', pattern: new RegExp(`^/channels/${SNOWFLAKE}/threads/archived/(public|private)$`) },
+  // Recherche de fils du client. Jamais `/guilds/{id}/threads/active` ni
+  // `threads/archived/*` : le client ne les appelle pas (cf. discord-api).
+  { method: 'GET', pattern: new RegExp(`^/channels/${SNOWFLAKE}/threads/search$`) },
   {
     method: 'GET',
     // Segment emoji = sortie d'`encodeURIComponent` (cf. `getReactions`) :

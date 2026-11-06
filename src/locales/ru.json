@@ -91,6 +91,7 @@
   "queue.resume": "Возобновить",
   "queue.zipping": "Preparing the archive…",
   "queue.download": "Скачать .zip",
+  "queue.zip_unavailable": "Зашифрованный архив не сохранён: запустите экспорт снова",
   "queue.waiting": "ожидание…",
   "status.in_progress": "ВЫПОЛНЯЕТСЯ",
   "status.paused": "ПРИОСТАНОВЛЕНО",

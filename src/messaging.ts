@@ -91,7 +91,18 @@ export interface QueueItemView {
   assetsByKind: { image: number; video: number; audio: number; file: number };
   reactions: number;
   log: string[];
+  /** Le paquet est en mémoire : téléchargement immédiat. */
   zipReady: boolean;
+  /**
+   * Paquet en cours de fabrication (fin de run, ou demande de téléchargement
+   * d'une tâche reconstruite au démarrage, dont le zip n'est plus en mémoire).
+   */
+  zipPacking: boolean;
+  /**
+   * Paquet impossible à refaire : archive chiffrée dont le mot de passe a été
+   * effacé après la première fabrication. L'UI propose de relancer l'export.
+   */
+  zipUnavailable: boolean;
   /**
    * Raison d'un arrêt net (run en pause) : l'UI affiche le message traduit
    * `stop.<kind>`. Absent pour une pause ordinaire.

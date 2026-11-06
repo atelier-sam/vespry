@@ -91,6 +91,7 @@
   "queue.resume": "再開",
   "queue.zipping": "Preparing the archive…",
   "queue.download": ".zip をダウンロード",
+  "queue.zip_unavailable": "暗号化されたアーカイブは保持されていません：もう一度エクスポートしてください",
   "queue.waiting": "待機中…",
   "status.in_progress": "実行中",
   "status.paused": "一時停止",

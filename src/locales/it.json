@@ -91,6 +91,7 @@
   "queue.resume": "Riprendi",
   "queue.zipping": "Preparing the archive…",
   "queue.download": "Scarica .zip",
+  "queue.zip_unavailable": "Archivio cifrato non conservato: riavvia l'esportazione",
   "queue.waiting": "in attesa…",
   "status.in_progress": "IN CORSO",
   "status.paused": "IN PAUSA",

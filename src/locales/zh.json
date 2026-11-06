@@ -91,6 +91,7 @@
   "queue.resume": "继续",
   "queue.zipping": "Preparing the archive…",
   "queue.download": "下载 .zip",
+  "queue.zip_unavailable": "加密归档未保留：请重新运行导出",
   "queue.waiting": "等待中…",
   "status.in_progress": "进行中",
   "status.paused": "已暂停",

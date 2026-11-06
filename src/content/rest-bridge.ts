@@ -73,38 +73,137 @@ interface ClientRestOptions {
 }
 
 interface WebpackRequire {
+  /** Modules déjà évalués. */
   c?: Record<string, { exports?: unknown } | undefined>;
+  /** Fabriques des modules (leur code source sert de marque). */
+  m?: Record<string, unknown>;
 }
 
-function looksLikeRest(v: unknown): v is ClientRest & { put: unknown; patch: unknown } {
-  if (!v || (typeof v !== 'object' && typeof v !== 'function')) return false;
-  const o = v as Record<string, unknown>;
-  return typeof o.get === 'function' && typeof o.del === 'function'
-    && typeof o.put === 'function' && typeof o.patch === 'function';
+const REST_VERBS = ['get', 'post', 'put', 'patch', 'del'] as const;
+/** Option que seul le module HTTP du client lit (`t.oldFormErrors&&…50035`). */
+const REST_SOURCE_MARK = 'oldFormErrors';
+
+/**
+ * Le module HTTP du client : un objet ordinaire dont les verbes sont des
+ * propriétés PROPRES, des données (pas des accesseurs), toutes des fonctions.
+ *
+ * Pourquoi si strict (essai réel du 06/11/2026) : le client Discord contient
+ * des dizaines de proxys de traduction qui rendent une fonction pour N'IMPORTE
+ * quelle clé. Un test `typeof o.get === 'function'` les prenait pour le module
+ * REST (92 faux candidats sur la page) : un appel serait parti vers un proxy,
+ * aurait rendu une chaîne, et la lecture aurait passé pour un salon vide. Un
+ * proxy ne déclare comme clés propres que celles qu'on lui a déjà lues, et on
+ * ne lit ici AUCUNE propriété avant d'avoir vu les clés.
+ */
+function isRestShape(v: unknown): v is ClientRest {
+  if (!v || typeof v !== 'object') return false;
+  let keys: string[];
+  try {
+    keys = Object.keys(v);
+  } catch {
+    return false;
+  }
+  if (!REST_VERBS.every((k) => keys.includes(k))) return false;
+  return REST_VERBS.every((k) => {
+    const d = Object.getOwnPropertyDescriptor(v, k);
+    return !!d && 'value' in d && typeof d.value === 'function';
+  });
+}
+
+/** Deuxième preuve, indépendante de la forme : le code du module lit `oldFormErrors`. */
+function factoryHasMark(req: WebpackRequire, id: string): boolean {
+  const factory = req.m?.[id];
+  if (typeof factory !== 'function') return false;
+  try {
+    return Function.prototype.toString.call(factory).includes(REST_SOURCE_MARK);
+  } catch {
+    return false;
+  }
+}
+
+/** Exports d'un module : lui-même et ses valeurs (accesseurs ESM qui peuvent lever). */
+function exportCandidates(exp: object): unknown[] {
+  const out: unknown[] = [exp];
+  let keys: string[];
+  try {
+    keys = Object.keys(exp);
+  } catch {
+    return out;
+  }
+  for (const k of keys) {
+    try {
+      out.push((exp as Record<string, unknown>)[k]);
+    } catch {
+      // Liaison pas encore initialisée (dépendance circulaire) : on passe.
+    }
+  }
+  return out;
+}
+
+/**
+ * Tous les runtimes webpack branchés sur le tableau du client. Discord en
+ * charge plusieurs (4 mesurés le 06/11/2026) : chacun appelle le rappel, et
+ * le DERNIER est un petit runtime annexe (102 modules) — garder seulement
+ * celui-là faisait manquer le module REST et tout passait par le repli fetch.
+ */
+/** Le client Discord (son registre webpack) est-il présent sur cette page ? */
+function hasWebpack(): boolean {
+  return Array.isArray((window as unknown as { webpackChunkdiscord_app?: unknown }).webpackChunkdiscord_app);
+}
+
+function webpackRuntimes(): WebpackRequire[] {
+  const chunks = (window as unknown as { webpackChunkdiscord_app?: unknown }).webpackChunkdiscord_app;
+  if (!Array.isArray(chunks)) return [];
+  const runtimes: WebpackRequire[] = [];
+  try {
+    chunks.push([[Symbol('vespry')], {}, (r: WebpackRequire) => { runtimes.push(r); }]);
+    chunks.pop();
+  } catch {
+    return [];
+  }
+  return runtimes;
 }
 
 let cachedRest: ClientRest | null = null;
 
-/** Cherche le module REST dans le cache webpack du client. Null si absent. */
+/**
+ * Attente du module au démarrage de la page. Mesuré le 06/11/2026 : les deux
+ * premières requêtes de session partaient par le repli fetch, le client
+ * n'ayant pas encore évalué son module HTTP. On l'attend une fois, au plus
+ * 10 s ; si Discord a changé de forme, le repli fetch prend le relais et on
+ * ne paie plus jamais l'attente sur cette page.
+ */
+const CLIENT_REST_WAIT_MS = 10_000;
+const CLIENT_REST_POLL_MS = 250;
+let clientWaitSpent = false;
+
+async function waitForClientRest(): Promise<ClientRest | null> {
+  if (clientWaitSpent) return null;
+  const deadline = Date.now() + CLIENT_REST_WAIT_MS;
+  try {
+    while (Date.now() < deadline) {
+      await new Promise<void>((r) => setTimeout(r, CLIENT_REST_POLL_MS));
+      const rest = findClientRest();
+      if (rest) return rest;
+    }
+    return null;
+  } finally {
+    clientWaitSpent = true;
+  }
+}
+
+/** Cherche le module REST dans les caches webpack du client. Null si absent. */
 function findClientRest(): ClientRest | null {
   if (cachedRest) return cachedRest;
-  const chunks = (window as unknown as { webpackChunkdiscord_app?: unknown }).webpackChunkdiscord_app;
-  if (!Array.isArray(chunks)) return null;
-  let req: WebpackRequire | null = null;
-  try {
-    chunks.push([[Symbol('vespry')], {}, (r: WebpackRequire) => { req = r; }]);
-    chunks.pop();
-  } catch {
-    return null;
-  }
-  const cache = (req as WebpackRequire | null)?.c;
-  if (!cache) return null;
-  for (const mod of Object.values(cache)) {
-    const exp = mod?.exports;
-    if (!exp || typeof exp !== 'object') continue;
-    if (looksLikeRest(exp)) return (cachedRest = exp);
-    for (const value of Object.values(exp as Record<string, unknown>)) {
-      if (looksLikeRest(value)) return (cachedRest = value);
+  for (const req of webpackRuntimes()) {
+    const cache = req?.c;
+    if (!cache) continue;
+    for (const [id, mod] of Object.entries(cache)) {
+      const exp = mod?.exports;
+      if (!exp || typeof exp !== 'object') continue;
+      for (const value of exportCandidates(exp)) {
+        if (isRestShape(value) && factoryHasMark(req, id)) return (cachedRest = value);
+      }
     }
   }
   return null;
@@ -161,7 +260,14 @@ async function sendViaClient(
   const opts: ClientRestOptions = { ...splitPath(req.path), oldFormErrors: true };
   try {
     const res = await (req.method === 'GET' ? rest.get(opts) : rest.del(opts));
-    return normalizeClient(res, 200) ?? { status: 204, body: null, nonJson: false, via: 'client' };
+    // Le module résout TOUJOURS un objet `{ ok, status, body, … }` (lu dans
+    // son code le 06/11/2026), DELETE compris. Autre chose = ce n'était pas
+    // lui : surtout pas un « 204 vide », qui ferait passer une lecture ratée
+    // pour un salon sans message.
+    const r = normalizeClient(res, 200);
+    if (r) return r;
+    cachedRest = null;
+    return 'indeterminate';
   } catch (err) {
     // Le client rejette avec un objet réponse ({ status, body }) sur 4xx/5xx.
     const r = normalizeClient(err, 0);
@@ -283,7 +389,8 @@ export async function executeRest(nativeFetch: typeof fetch, raw: unknown): Prom
     const unknown = await waitForAccount(req);
     if (unknown) return unknown;
     // Le repli fetch ne sert QUE si le module est introuvable AVANT l'appel.
-    const rest = findClientRest();
+    // Attente AVANT la vérification synchrone du compte, jamais entre les deux.
+    const rest = findClientRest() ?? (hasWebpack() ? await waitForClientRest() : null);
     if (rest) {
       // Synchrone jusqu'à l'appel du module (cf. accountRefusal).
       const refused = accountRefusal(req, captured.get('authorization'));

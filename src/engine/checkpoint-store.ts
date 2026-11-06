@@ -82,6 +82,20 @@ export class CheckpointStore {
     return this.conn.get('runs', id);
   }
 
+  /**
+   * Efface le mot de passe du zip d'un run, une fois le paquet chiffré
+   * fabriqué. Avant (essai réel du 06/11/2026) il restait en clair dans
+   * IndexedDB pour toujours, contre ce que promettent l'interface et
+   * `ExportOptions.zipPassword`. Le drapeau `encrypted` reste, pour que le
+   * paquet ne soit jamais refait en clair.
+   */
+  async forgetZipPassword(id: string): Promise<void> {
+    const run = await this.getRun(id);
+    if (!run?.options.zipPassword) return;
+    const { zipPassword: _forgotten, ...options } = run.options;
+    await this.putRun({ ...run, options: { ...options, encrypted: true } });
+  }
+
   async patchRun(id: string, patch: Partial<ExportRun>): Promise<void> {
     const run = await this.getRun(id);
     if (!run) throw new Error(`run introuvable : ${id}`);

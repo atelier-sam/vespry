@@ -62,3 +62,23 @@ describe('VespryController — verrou de session (Codex H3)', () => {
     expect(c.api).not.toBeNull();
   });
 });
+
+describe('VespryController — un seul chargement de session (essai réel 06/11)', () => {
+  it('init et annonce d\'onglet simultanées : /users/@me et /guilds partent UNE fois', async () => {
+    const t = new FakeTransport([], (req) => (req.path === '/users/@me' ? ok(ME) : ok([])));
+    const c = controllerWith(t);
+    await Promise.all([c.init(), c.onDiscordTabReady()]);
+    expect(c.api).not.toBeNull();
+    expect(t.calls.map((r) => r.path)).toEqual(['/users/@me', '/users/@me/guilds']);
+  });
+
+  it('contrôle positif : un chargement raté peut être retenté ensuite', async () => {
+    const t = new FakeTransport([new TransportError('no-tab', 'aucun onglet'), ok(ME), ok([])]);
+    const c = controllerWith(t);
+    await c.onDiscordTabReady();
+    expect(c.api).toBeNull();
+    await c.onDiscordTabReady();
+    expect(c.api).not.toBeNull();
+    expect(t.calls.map((r) => r.path)).toEqual(['/users/@me', '/users/@me', '/users/@me/guilds']);
+  });
+});

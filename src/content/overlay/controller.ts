@@ -13,13 +13,13 @@ import {
   planGuildExport,
   type RunnerLogEvent,
 } from '../../engine/export-runner';
-import { packageRun } from '../../engine/packager';
+import { packageRun, ZipPasswordGoneError } from '../../engine/packager';
 import { Pacer, type PaceMode } from '../../engine/pacer';
 import type { DiscordTransport } from '../../engine/transport';
 import { RelayTransport, runtimeRelay } from '../../engine/relay-transport';
 import { GET_PACE_KIND, isPaceMode } from '../../engine/pace-setting';
-import { maybeSendSchemaReport } from '../../engine/schema-report';
-import { loadCredits } from '../../credits';
+import { SCHEMA_REPORT_KIND, type SchemaReportMessage } from '../../engine/schema-report';
+import { getDetectedUnknowns } from '../../engine/schema-watch';
 import { recordEvent } from '../../diagnostics';
 import {
   ALL_MEDIA,
@@ -56,6 +56,11 @@ const ZERO_KINDS: Record<AssetKind, number> = {
  * fois ; on la garde pour la session, rafraîchie au-delà de 30 min.
  */
 const ESTIMATE_TTL_MS = 30 * 60_000;
+/**
+ * Durée de vie de l'URL du zip passée au service worker. Le téléchargement a
+ * résolu l'URL bien avant : la libérer rend la mémoire du blob.
+ */
+const BLOB_URL_TTL_MS = 5 * 60_000;
 
 /** Une tâche d'export dans la file. */
 export interface QueueItem {
@@ -75,6 +80,8 @@ export interface QueueItem {
   /** Lignes de la mini-console (plafonné). */
   log: string[];
   zip: Blob | null;
+  /** Paquet chiffré impossible à refaire (cf. `QueueItemView.zipUnavailable`). */
+  zipUnavailable?: boolean;
   /** Raison d'un arrêt net, lue dans le checkpoint (cf. `ExportRun.stopReason`). */
   stopReason?: StopKind;
 }
@@ -121,6 +128,30 @@ export interface ControllerDeps {
   requestToken?: () => Promise<string | null>;
   /** Lit le rythme enregistré ; défaut : via le service worker. */
   requestPace?: () => Promise<PaceMode | null>;
+  /**
+   * Lance le téléchargement d'une URL de blob. Défaut : demande au service
+   * worker (l'offscreen n'a pas `chrome.downloads`). L'event page Firefox,
+   * qui héberge le contrôleur, appelle `chrome.downloads` elle-même : un
+   * message qu'elle s'enverrait ne lui serait jamais remis.
+   */
+  download?: (url: string, filename: string) => Promise<void>;
+  /**
+   * Transmet les champs Discord inconnus au rapport de schéma (opt-in).
+   * Défaut : au service worker, qui lit l'opt-in dans `chrome.storage` (absent
+   * de l'offscreen). L'event page Firefox l'envoie elle-même.
+   */
+  reportSchema?: (fields: string[]) => Promise<void>;
+}
+
+/** Rapport de schéma par le service worker (hôte Chrome). */
+async function reportSchemaViaWorker(fields: string[]): Promise<void> {
+  const msg: SchemaReportMessage = { kind: SCHEMA_REPORT_KIND, fields };
+  await chrome.runtime.sendMessage(msg);
+}
+
+/** Téléchargement par le service worker (hôte Chrome : document offscreen). */
+async function downloadViaWorker(url: string, filename: string): Promise<void> {
+  await chrome.runtime.sendMessage({ kind: 'do-download', url, filename });
 }
 
 const KIND_LABEL: Record<AssetKind, string> = {
@@ -206,10 +237,77 @@ export async function collectDmThreads(
       for (const m of recent) {
         if (m.thread) threads.set(m.thread.id, m.thread);
       }
-    } catch {
+    } catch (e) {
+      // Un refus de Discord n'est JAMAIS avalé : il doit arrêter la tâche.
+      if (isStopError(e)) throw e;
       /* DM inaccessible (révoqué, vidé) — ignoré */
     }
   }
+  return [...channels, ...threads.values()];
+}
+
+/** Salons qui ont des messages (et donc des messages ouvrant un fil) : texte, annonces. */
+const MESSAGE_CHANNEL_TYPES: ReadonlySet<number> = new Set([0, 5]);
+/** Salons qui peuvent porter des fils : texte, annonces, forum, média. */
+const THREAD_PARENT_TYPES: ReadonlySet<number> = new Set([0, 5, 15, 16]);
+/** Borne de pages de recherche de fils par salon (25 par page → 1 000 fils). */
+export const MAX_THREAD_SEARCH_PAGES = 40;
+
+/** Sous-ensemble de `DiscordApi` utilisé pour découvrir les fils d'un serveur. */
+export interface GuildThreadProbe extends DmThreadProbe {
+  searchArchivedThreads: (
+    channelId: string,
+    offset: number,
+  ) => Promise<{ threads: RawChannel[]; hasMore: boolean }>;
+}
+
+/**
+ * Étend les salons d'un serveur avec leurs fils, avec les SEULES requêtes
+ * que le client Discord fait lui-même (essai réel du 06/11/2026) :
+ *  - la première page de messages d'un salon (ce que fait l'ouverture du
+ *    salon) : chaque `message.thread` est un fil, actif ou archivé ;
+ *  - la recherche de fils archivés du navigateur de fils
+ *    (`searchArchivedThreads`), page par page : fils archivés et posts de
+ *    forum.
+ *
+ * Limite assumée : un fil ENCORE ACTIF dont le message d'ouverture est plus
+ * ancien que les 100 derniers messages n'est pas trouvé (le client, lui, le
+ * connaît par la passerelle). Les posts actifs d'un forum non plus.
+ *
+ * Un refus de Discord n'est jamais avalé (il arrête la tâche) ; un salon
+ * inaccessible est ignoré.
+ */
+export async function collectGuildThreads(
+  api: GuildThreadProbe,
+  channels: RawChannel[],
+): Promise<RawChannel[]> {
+  const threads = new Map<string, RawChannel>();
+  for (const ch of channels) {
+    if (MESSAGE_CHANNEL_TYPES.has(ch.type)) {
+      try {
+        for (const m of await api.getMessages(ch.id)) {
+          if (m.thread) threads.set(m.thread.id, m.thread);
+        }
+      } catch (e) {
+        if (isStopError(e)) throw e;
+      }
+    }
+    if (!THREAD_PARENT_TYPES.has(ch.type)) continue;
+    let offset = 0;
+    for (let page = 0; page < MAX_THREAD_SEARCH_PAGES; page++) {
+      let res: { threads: RawChannel[]; hasMore: boolean };
+      try {
+        res = await api.searchArchivedThreads(ch.id, offset);
+      } catch (e) {
+        if (isStopError(e)) throw e;
+        break;
+      }
+      for (const th of res.threads) threads.set(th.id, th);
+      if (!res.hasMore || res.threads.length === 0) break;
+      offset += res.threads.length;
+    }
+  }
+  for (const c of channels) threads.delete(c.id);
   return [...channels, ...threads.values()];
 }
 
@@ -248,6 +346,8 @@ export class VespryController {
   private readonly transport: DiscordTransport;
   private readonly readToken: () => Promise<string | null>;
   private readonly readPace: () => Promise<PaceMode | null>;
+  private readonly startDownload: (url: string, filename: string) => Promise<void>;
+  private readonly sendSchemaReport: (fields: string[]) => Promise<void>;
   /** Non nul seulement quand la session a été vérifiée (users/@me a répondu). */
   api: DiscordApi | null = null;
   /** Raison du dernier échec de chargement de session. */
@@ -281,12 +381,18 @@ export class VespryController {
   /** Vrai tant qu'un `watchForToken` tourne — empêche les doublons. */
   private watching = false;
   private readonly listeners = new Set<() => void>();
+  /** Chargement de session en cours (cf. `loadSession`). */
+  private sessionLoad: Promise<boolean> | null = null;
+  /** Paquets en cours de fabrication, par run (cf. `ensureZip`). */
+  private readonly packing = new Map<string, Promise<Blob | null>>();
 
   constructor(deps: ControllerDeps = {}) {
     this.transport = deps.transport ?? new RelayTransport(runtimeRelay);
     this.pacer = deps.pacer ?? new Pacer('discreet');
     this.readToken = deps.requestToken ?? requestToken;
     this.readPace = deps.requestPace ?? requestPace;
+    this.startDownload = deps.download ?? downloadViaWorker;
+    this.sendSchemaReport = deps.reportSchema ?? reportSchemaViaWorker;
   }
 
   subscribe(cb: () => void): () => void {
@@ -346,7 +452,23 @@ export class VespryController {
    * avec la session du client. Le jeton capté par le bridge ne sert plus que
    * de SIGNAL de reconnexion (cf. `watchForSession`).
    */
-  private async loadSession(): Promise<boolean> {
+  private loadSession(): Promise<boolean> {
+    // Un seul chargement à la fois. Au démarrage, `init()` et l'annonce de
+    // l'onglet (`onDiscordTabReady`) le lançaient chacun : `/users/@me` et
+    // `/users/@me/guilds` partaient deux fois (essai réel du 06/11/2026), des
+    // requêtes que le client Discord n'émet jamais en double. Une session
+    // déjà chargée ne se recharge pas non plus : tous les appelants veulent
+    // « une session », aucun ne veut forcer un rechargement.
+    if (this.api) return Promise.resolve(true);
+    if (!this.sessionLoad) {
+      this.sessionLoad = this.loadSessionOnce().finally(() => {
+        this.sessionLoad = null;
+      });
+    }
+    return this.sessionLoad;
+  }
+
+  private async loadSessionOnce(): Promise<boolean> {
     if (this.sessionHalt) {
       // Discord a refusé un chargement précédent : rien ne repart avant le
       // bouton Reprendre (`clearHalt`), sauf reconnexion (cf. watchForSession).
@@ -632,50 +754,18 @@ export class VespryController {
     }
   }
 
-  /**
-   * Étend la liste de salons avec leurs threads — actifs, et archivés
-   * publics ET privés. Couvre aussi les posts de forum (qui sont des
-   * threads). Dédupliqué par id. Un thread est un salon comme un autre
-   * pour le moteur d'export.
-   */
-  private async withThreads(
-    guildId: string,
-    channels: RawChannel[],
-  ): Promise<RawChannel[]> {
+  /** Fils des salons d'un serveur (cf. `collectGuildThreads`). */
+  private async withThreads(channels: RawChannel[]): Promise<RawChannel[]> {
     if (!this.api) return channels;
-    const selected = new Set(channels.map((c) => c.id));
-    const threads = new Map<string, RawChannel>();
-    try {
-      for (const th of await this.api.getActiveThreads(guildId)) {
-        if (th.parent_id && selected.has(th.parent_id)) threads.set(th.id, th);
-      }
-    } catch (e) {
-      // Threads actifs indisponibles (perms, salon supprimé) — non bloquant
-      // mais on garde la trace : un utilisateur qui voit ses threads
-      // manquants dans l'export aura la raison dans le rapport.
-      recordEvent('warn', `getActiveThreads(${guildId}) a échoué : ${String(e)}`);
-    }
-    for (const ch of channels) {
-      for (const visibility of ['public', 'private'] as const) {
-        try {
-          for (const th of await this.api.getArchivedThreads(ch.id, visibility)) {
-            threads.set(th.id, th);
-          }
-        } catch {
-          /* salon sans threads de ce type ou accès refusé — ignoré */
-        }
-      }
-    }
-    return [...channels, ...threads.values()];
+    return collectGuildThreads(this.api, channels);
   }
 
   /**
    * Étend une liste de DMs / group DMs avec leurs threads.
    *
-   * Pourquoi un chemin séparé. Discord expose `GET /guilds/{id}/threads/active`
-   * et `GET /channels/{id}/threads/archived/{public|private}` UNIQUEMENT pour
-   * les guilds — il n'y a pas d'équivalent pour les DMs (cf. dev portal,
-   * 2025). Les threads de DM ne sont découvrables qu'à travers le champ
+   * Pourquoi un chemin séparé. La recherche de fils (`threads/search`) ne
+   * vaut que pour les salons de serveur ; il n'y a pas d'équivalent pour les
+   * DMs. Les threads de DM ne sont découvrables qu'à travers le champ
    * `message.thread` quand un message a ouvert un fil. On parcourt donc
    * la page la plus récente de messages de chaque conversation (~100) et
    * on collecte chaque thread non nul, dédupliqué par id.
@@ -691,11 +781,6 @@ export class VespryController {
   private async withDmThreads(channels: RawChannel[]): Promise<RawChannel[]> {
     if (!this.api) return channels;
     return collectDmThreads(this.api, channels);
-  }
-
-  /** Lit l'URL du Worker depuis credits.json — pour les fetchs tiers. */
-  private async donorApiUrl(): Promise<string> {
-    return (await loadCredits()).donorApiUrl;
   }
 
   /**
@@ -746,15 +831,21 @@ export class VespryController {
         incrementalNote = '↻ Incrémental coché mais aucun export précédent pour ce serveur — premier export complet.';
       }
     }
-    // `includeThreads` est désormais respecté aussi pour les DMs : on
-    // utilise un chemin séparé (`withDmThreads`) qui découvre les fils
-    // via `message.thread` plutôt que via les endpoints `/threads/active`
-    // (réservés aux guilds). Cf. commentaire sur la méthode.
+    // Fils : serveurs (`withThreads`) et DMs (`withDmThreads`), chacun avec
+    // les requêtes que le client ferait lui-même.
     let expanded = channels;
     if (extras.includeThreads) {
-      expanded = guild.id === '@me'
-        ? await this.withDmThreads(channels)
-        : await this.withThreads(guild.id, channels);
+      try {
+        expanded = guild.id === '@me'
+          ? await this.withDmThreads(channels)
+          : await this.withThreads(channels);
+      } catch (e) {
+        if (!isStopError(e)) throw e;
+        // Discord a refusé pendant la découverte : le verrou est posé, la
+        // tâche est créée sans les fils et s'arrête à sa première requête,
+        // avec la raison affichée (rien n'est émis entre-temps).
+        recordEvent('warn', `découverte des fils interrompue : ${String(e)}`);
+      }
     }
     const runId = await planGuildExport(this.store, guild, expanded, options);
     const initialLog: string[] = [];
@@ -1029,13 +1120,70 @@ export class VespryController {
    * (Phase 3 — templates de zip). Sans override on retombe sur le défaut
    * historique `vespry-${safe(guildName)}.zip`.
    */
-  downloadZip(runId: string, filenameOverride?: string): void {
+  async downloadZip(runId: string, filenameOverride?: string): Promise<void> {
     const item = this.queue.find((q) => q.runId === runId);
-    if (!item?.zip) return;
-    const url = URL.createObjectURL(item.zip);
+    if (!item) return;
+    const zip = await this.ensureZip(item);
+    if (!zip) return;
+    const url = URL.createObjectURL(zip);
     const filename = filenameOverride
       ?? `vespry-${item.guildName.replace(/[^\w-]/gu, '_')}.zip`;
-    void chrome.runtime.sendMessage({ kind: 'do-download', url, filename });
+    try {
+      await this.startDownload(url, filename);
+    } catch (e) {
+      pushLog(item.log, `${clock()}  ✗ Téléchargement impossible : ${String(e)}`);
+      this.notify();
+    }
+    // Le service worker a lancé le téléchargement, qui a résolu l'URL : on la
+    // libère plus tard (sinon chaque clic gardait une copie du zip en mémoire
+    // jusqu'à la fermeture de l'offscreen).
+    setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_TTL_MS);
+  }
+
+  /**
+   * Paquet d'une tâche terminée : celui en mémoire, ou fabriqué maintenant.
+   *
+   * Pourquoi « maintenant » : le zip ne vit qu'en mémoire. Une tâche
+   * reconstruite au démarrage (`rebuildItem`) n'en a plus ; elle restait
+   * affichée « Préparation de l'archive… » pour toujours, sans bouton (essai
+   * réel du 06/11/2026). Le checkpoint a tout ce qu'il faut pour le refaire.
+   *
+   * Une seule fabrication à la fois par tâche : un second appel attend la
+   * première. Après une fabrication chiffrée, le mot de passe est effacé du
+   * checkpoint ; refaire le paquet est alors refusé (`zipUnavailable`).
+   */
+  private ensureZip(item: QueueItem): Promise<Blob | null> {
+    if (item.zip) return Promise.resolve(item.zip);
+    if (item.status !== 'completed' && item.status !== 'partial') return Promise.resolve(null);
+    if (item.zipUnavailable) return Promise.resolve(null);
+    const running = this.packing.get(item.runId);
+    if (running) return running;
+    const job = this.buildZip(item).finally(() => {
+      this.packing.delete(item.runId);
+      this.notify();
+    });
+    this.packing.set(item.runId, job);
+    this.notify();
+    return job;
+  }
+
+  private async buildZip(item: QueueItem): Promise<Blob | null> {
+    try {
+      const { blob } = await packageRun(this.store, item.runId);
+      await this.store.forgetZipPassword(item.runId);
+      item.zip = blob;
+      pushLog(item.log, `${clock()}  📦 Paquet prêt — ${(blob.size / 1e6).toFixed(1)} Mo`);
+      return blob;
+    } catch (e) {
+      if (e instanceof ZipPasswordGoneError) {
+        item.zipUnavailable = true;
+        pushLog(item.log, `${clock()}  🔒 Archive chiffrée non conservée : relance l'export pour la refaire`);
+        return null;
+      }
+      pushLog(item.log, `${clock()}  ✗ Paquet impossible : ${e instanceof Error ? e.message : String(e)}`);
+      recordEvent('error', `buildZip(${item.runId}): ${e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e)}`);
+      return null;
+    }
   }
 
   /** Projette l'état dans une forme sérialisable pour les vues. */
@@ -1058,6 +1206,8 @@ export class VespryController {
         reactions: q.reactions,
         log: q.log,
         zipReady: q.zip !== null,
+        zipPacking: this.packing.has(q.runId),
+        zipUnavailable: q.zipUnavailable === true,
         ...(q.status === 'paused' && q.stopReason ? { stopReason: q.stopReason } : {}),
       })),
       purgeQueue: this.purgeQueue.map((p): PurgeItemView => ({
@@ -1149,14 +1299,17 @@ export class VespryController {
       delete item.stopReason;
     }
     if (status === 'completed' || status === 'partial') {
-      const { blob } = await packageRun(this.store, item.runId);
-      item.zip = blob;
-      pushLog(item.log, `${clock()}  📦 Paquet prêt — ${(blob.size / 1e6).toFixed(1)} Mo`);
+      await this.ensureZip(item);
     }
     // Si l'utilisateur a opt-in à la télémétrie de schéma, on envoie un
     // rapport minimal (version + locale + champs Discord inconnus). Sans
     // contenu de message ni id ; idempotent par signature locale.
-    void maybeSendSchemaReport(await this.donorApiUrl());
+    const unknownFields = getDetectedUnknowns();
+    if (unknownFields.length > 0) {
+      this.sendSchemaReport(unknownFields).catch(() => {
+        /* service worker indisponible — sans gravité, rapport suivant */
+      });
+    }
     this.notify();
   }
 

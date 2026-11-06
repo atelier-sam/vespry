@@ -91,6 +91,7 @@
   "queue.resume": "Wznów",
   "queue.zipping": "Preparing the archive…",
   "queue.download": "Pobierz .zip",
+  "queue.zip_unavailable": "Zaszyfrowane archiwum nie zostało zachowane: uruchom eksport ponownie",
   "queue.waiting": "oczekiwanie…",
   "status.in_progress": "W TOKU",
   "status.paused": "WSTRZYMANO",

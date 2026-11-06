@@ -47,6 +47,7 @@ import { GET_PACE_KIND, PACE_STORAGE_KEY, readPace } from '../engine/pace-settin
 import { RelayTransport } from '../engine/relay-transport';
 import { chromeTabApi, relayRestToTab } from '../background/tab-relay';
 import { DISCORD_TAB_READY } from '../content/rest-bridge-protocol';
+import { maybeSendSchemaReport } from '../engine/schema-report';
 import {
   SCHEDULE_STORAGE_KEY,
   SCHEDULED_EXPORT_ALARM_NAME,
@@ -82,6 +83,14 @@ const DISCORD_URL = 'https://discord.com/channels/@me';
 const controller = new VespryController({
   transport: new RelayTransport((req) => relayRestToTab(chromeTabApi, req)),
   requestPace: () => readPace(chrome.storage.local),
+  // Le contrôleur vit ici : il télécharge lui-même (un message envoyé à
+  // soi-même n'est jamais remis).
+  download: async (url, filename) => {
+    await chrome.downloads.download({ url, filename });
+  },
+  reportSchema: async (fields) => {
+    await maybeSendSchemaReport((await loadCredits()).donorApiUrl, fields);
+  },
 });
 
 /** Diffuse l'état courant aux vues abonnées (popup, overlay). */
@@ -233,7 +242,7 @@ async function exec(command: VespryCommand): Promise<CommandResponse> {
       controller.resume(command.runId);
       return { ok: true };
     case 'download':
-      controller.downloadZip(command.runId, command.filename);
+      await controller.downloadZip(command.runId, command.filename);
       return { ok: true };
     case 'preview':
       return {

@@ -4,6 +4,17 @@ import { isAllowedRequest, userIdFromToken } from './transport';
 const R = '/channels/111/messages/222/reactions/';
 
 describe('isAllowedRequest — liste blanche des routes', () => {
+  // Essai réel du 06/11/2026 : le client Discord n'appelle jamais ces routes.
+  it('routes de fils : seule la recherche du client passe', () => {
+    expect(isAllowedRequest({ method: 'GET', path: '/guilds/123/threads/active' })).toBe(false);
+    expect(isAllowedRequest({ method: 'GET', path: '/channels/123/threads/archived/public' })).toBe(false);
+    expect(isAllowedRequest({ method: 'GET', path: '/channels/123/threads/archived/private' })).toBe(false);
+    expect(isAllowedRequest({
+      method: 'GET',
+      path: '/channels/123/threads/search?archived=true&sort_by=last_message_time&sort_order=desc&limit=25&offset=0',
+    })).toBe(true);
+  });
+
   it('accepte les routes de lecture et la suppression d’un message', () => {
     expect(isAllowedRequest({ method: 'GET', path: '/users/@me' })).toBe(true);
     expect(isAllowedRequest({ method: 'GET', path: '/channels/1/messages?limit=100&before=9' })).toBe(true);

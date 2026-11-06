@@ -323,6 +323,19 @@ function jsonMessage(msg: RawMessage, urlToPath: Map<string, string>): string {
     .replace(/\n/g, '\n    ');
 }
 
+/**
+ * Le paquet d'un run chiffré ne peut plus être refait : son mot de passe a
+ * été effacé du checkpoint après la première fabrication (cf.
+ * `CheckpointStore.forgetZipPassword`). L'appelant affiche « relancer
+ * l'export » ; jamais une archive en clair à la place.
+ */
+export class ZipPasswordGoneError extends Error {
+  constructor(runId: string) {
+    super(`Archive chiffrée du run ${runId} : mot de passe effacé, paquet non reconstructible`);
+    this.name = 'ZipPasswordGoneError';
+  }
+}
+
 /** Construit le paquet zip agent-ready pour un run. */
 export async function packageRun(
   store: CheckpointStore,
@@ -331,6 +344,7 @@ export async function packageRun(
 ): Promise<PackageResult> {
   const run = await store.getRun(runId);
   if (!run) throw new Error(`run introuvable : ${runId}`);
+  if (run.options.encrypted && !run.options.zipPassword) throw new ZipPasswordGoneError(runId);
   const channels = await store.getChannels(runId);
   const assets = await store.getAssets(runId);
 

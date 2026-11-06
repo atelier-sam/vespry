@@ -91,6 +91,7 @@
   "queue.resume": "Fortsetzen",
   "queue.zipping": "Preparing the archive…",
   "queue.download": ".zip herunterladen",
+  "queue.zip_unavailable": "Verschlüsseltes Archiv nicht aufbewahrt: Export erneut starten",
   "queue.waiting": "wartet…",
   "status.in_progress": "LÄUFT",
   "status.paused": "PAUSIERT",

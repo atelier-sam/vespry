@@ -26,14 +26,17 @@ import {
   DiscordApiError,
   isLatchingStop,
   isStopError,
-  type ActiveThreadsResponse,
   type RawChannel,
   type RawEmoji,
   type RawGuild,
   type RawMessage,
   type RawUser,
   type Snowflake,
+  type ThreadSearchResponse,
 } from './types';
+
+/** Page de la recherche de fils du client Discord (`limit` de `THREAD_SEARCH`). */
+export const THREAD_SEARCH_PAGE = 25;
 
 /** 429 consécutifs tolérés sur une même requête avant l'arrêt. */
 const MAX_CONSECUTIVE_429 = 2;
@@ -259,9 +262,13 @@ export class DiscordApi {
    * `before` = id du plus ancien message déjà récupéré (curseur de pagination).
    */
   getMessages(channelId: Snowflake, before?: Snowflake): Promise<RawMessage[]> {
-    const cursor = before ? `&before=${before}` : '';
+    // Ordre des paramètres du client (`before` puis `limit`, observé sur ses
+    // propres requêtes le 06/11/2026). La taille de page reste 100 : le
+    // client lit par 10 puis 20, mais 5× plus de requêtes serait un autre
+    // signal (cf. preuves-prod de la session export discret).
+    const cursor = before ? `before=${before}&` : '';
     return this.get<RawMessage[]>(
-      `/channels/${channelId}/messages?limit=100${cursor}`,
+      `/channels/${channelId}/messages?${cursor}limit=100`,
     );
   }
 
@@ -336,23 +343,27 @@ export class DiscordApi {
     }
   }
 
-  /** Threads archivés d'un salon (`public` ou `private`). */
-  async getArchivedThreads(
+  /**
+   * Une page de fils archivés (et de posts de forum) d'un salon.
+   *
+   * Requête IDENTIQUE à celle du navigateur de fils du client Discord
+   * (`THREAD_SEARCH`, mêmes paramètres dans le même ordre, page de 25, lus
+   * dans son code le 06/11/2026). Le client n'appelle JAMAIS
+   * `/guilds/{id}/threads/active` (sa table de routes ne le contient pas : il
+   * reçoit les fils actifs par la passerelle) ni `threads/archived/*`. Les
+   * appeler depuis un compte utilisateur était une signature, et la réponse
+   * de Discord à `threads/active` posait le verrou d'arrêt dès le premier
+   * export (essai réel du 06/11/2026).
+   */
+  async searchArchivedThreads(
     channelId: Snowflake,
-    kind: 'public' | 'private',
-  ): Promise<RawChannel[]> {
-    const res = await this.get<{ threads: RawChannel[] }>(
-      `/channels/${channelId}/threads/archived/${kind}`,
+    offset: number,
+  ): Promise<{ threads: RawChannel[]; hasMore: boolean }> {
+    const res = await this.get<ThreadSearchResponse>(
+      `/channels/${channelId}/threads/search?archived=true&sort_by=last_message_time`
+        + `&sort_order=desc&limit=${THREAD_SEARCH_PAGE}&offset=${offset}`,
     );
-    return res.threads;
-  }
-
-  /** Threads actifs d'un serveur (GET /guilds/{id}/threads/active). */
-  async getActiveThreads(guildId: Snowflake): Promise<RawChannel[]> {
-    const res = await this.get<ActiveThreadsResponse>(
-      `/guilds/${guildId}/threads/active`,
-    );
-    return res.threads;
+    return { threads: res?.threads ?? [], hasMore: res?.has_more === true };
   }
 
   /**

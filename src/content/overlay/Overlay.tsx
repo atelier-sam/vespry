@@ -59,6 +59,7 @@ import { PurgeModal } from './PurgeModal';
 import { PaceSetting } from './PaceSetting';
 import { FilenameTemplateField } from './FilenameTemplateField';
 import { PasswordSection } from './PasswordSection';
+import { createLatestGate, nextLaunchStep } from './launch-guards';
 import { HelpTip } from '../../ui/HelpTip';
 import { formatRelativePast } from '../../ui/relative-time';
 import {
@@ -491,6 +492,10 @@ export function Overlay({
       negated.has(zoneSig(zone)) ? { ...zone, negate: true } : zone);
   }, [afterDate, beforeDate, fAuthor, fContent, fMention, flags, manualSel, negated]);
 
+  // Dernière demande gagne : la liste d'un serveur quitté ne remplace jamais
+  // celle du serveur affiché (cf. launch-guards, essai réel du 06/11/2026).
+  const channelLoads = useRef(createLatestGate()).current;
+
   function selectGuild(guild: RawGuild): void {
     setActiveGuild(guild);
     setChannels([]);
@@ -498,7 +503,9 @@ export function Overlay({
     setManualSel(new Map());
     setFocus(null);
     setLoadingChannels(true);
+    const token = channelLoads.begin();
     void controller.loadChannels(guild.id).then((ch) => {
+      if (!channelLoads.isCurrent(token)) return;
       setChannels(ch);
       setLoadingChannels(false);
     });
@@ -585,18 +592,24 @@ export function Overlay({
    * via `controller.estimate()` qui fait une search Discord sur chaque
    * salon. Spinner sur le bouton pendant l'attente.
    */
-  async function enqueue(): Promise<void> {
-    if (!tosAcked) {
-      setShowToS(true);
-      return;
-    }
+  async function enqueue(tosConfirmed = false): Promise<void> {
     const picked = channels.filter(
       (c) => selected.has(c.id) || (manualSel.get(c.id)?.size ?? 0) > 0,
     );
-    if (!activeGuild || picked.length === 0) return;
-    // Si l'utilisateur a déjà acquitté pour cette session OU qu'on a très
-    // peu de salons (< 3), on n'estime même pas — gain de temps évident.
-    if (largeRunAcked || picked.length < 3) {
+    const step = nextLaunchStep({
+      tosAcked,
+      tosConfirmed,
+      largeRunAcked,
+      pickedCount: activeGuild ? picked.length : 0,
+    });
+    if (step === 'tos') {
+      setShowToS(true);
+      return;
+    }
+    if (step === 'nothing' || !activeGuild) return;
+    // Gros export déjà acquitté pour cette session, ou très peu de salons :
+    // on n'estime même pas.
+    if (step === 'enqueue') {
       doEnqueue();
       return;
     }
@@ -1219,7 +1232,9 @@ export function Overlay({
               void chrome.storage.local.set({ 'vespry.tosAcked': true });
               setTosAcked(true);
             }
-            doEnqueue();
+            // Repasse par la porte complète : l'avertissement « gros export »
+            // ne doit pas être sauté au premier lancement.
+            void enqueue(true);
           }}
         />
       </div>
@@ -1655,12 +1670,15 @@ function MessagePreview({
    * Cf. feedback Sam (2026-05-19 — Shift+clic ne fonctionnait pas).
    */
   const rangeAnchor = useRef<string | null>(null);
+  /** Salon affiché : une page « plus ancienne » d'un salon quitté est ignorée. */
+  const shownChannel = useRef<string | null>(null);
 
   // (re)charge l'aperçu au changement de salon.
   useEffect(() => {
+    shownChannel.current = channel?.id ?? null;
     if (!channel) { setMessages([]); setDone(false); return undefined; }
     let cancelled = false;
-    setMessages([]); setDone(false); setLoading(true);
+    setMessages([]); setDone(false); setLoading(true); setLoadingMore(false);
     rangeAnchor.current = null;
     void controller.preview(channel.id).then((raw) => {
       if (cancelled) return;
@@ -1693,7 +1711,11 @@ function MessagePreview({
     const oldest = messages[0];
     if (!channel || loadingMore || done || !oldest) return;
     setLoadingMore(true);
-    void controller.preview(channel.id, oldest.id).then((raw) => {
+    const chId = channel.id;
+    void controller.preview(chId, oldest.id).then((raw) => {
+      // Salon changé pendant le chargement (fenêtre large au rythme Discret) :
+      // ces messages ne vont pas en tête de l'aperçu d'un autre salon.
+      if (shownChannel.current !== chId) return;
       if (el) prependFrom.current = el.scrollHeight;
       setMessages((cur) => [...raw.slice().reverse(), ...cur]);
       setDone(raw.length < 100);
@@ -2544,7 +2566,7 @@ function TaskCard({
           <i class={done ? 'ok' : ''} style={`width:${done ? 100 : pct}%`} />
         </div>
         {item.status === 'paused' && !isAutoResumeStop(item) && (
-          <span class="v-exp" onClick={onResume}>{t('queue.resume')}</span>
+          <button type="button" class="v-exp" onClick={onResume}>{t('queue.resume')}</button>
         )}
         {item.status === 'failed' && (
           <ReportLink
@@ -2553,23 +2575,30 @@ function TaskCard({
             label={t('report.this')}
           />
         )}
-        {done && item.zipReady && (
-          <span class="v-exp" onClick={onDownload}>
+        {/* Le bouton reste offert quand le zip n'est plus en mémoire (tâche
+            reconstruite au démarrage) : le clic le refait depuis le
+            checkpoint. Avant, ces tâches restaient « Préparation… » pour
+            toujours (essai réel du 06/11/2026). */}
+        {done && !item.zipPacking && !item.zipUnavailable && (
+          <button type="button" class="v-exp" onClick={onDownload}>
             <IconDownload />{t('queue.download')}
-          </span>
+          </button>
         )}
-        {done && !item.zipReady && (
-          /* Audit UX (commit suivant) : entre `status===completed` et
-             le moment où le packager a fini de zipper, l'utilisateur
-             voyait une barre verte 100 % SANS bouton télécharger — il
-             pensait que ça avait planté. On rend l'attente explicite. */
+        {done && item.zipPacking && (
+          /* Attente explicite pendant la fabrication du paquet : sans elle,
+             une barre verte à 100 % sans bouton faisait croire à un plantage. */
           <span class="v-exp v-exp--ghost" title={t('queue.zipping')}>
             ⏳ {t('queue.zipping')}
           </span>
         )}
-        <span class="v-exp" onClick={onToggle}>
+        {done && item.zipUnavailable && (
+          <span class="v-exp v-exp--ghost" title={t('queue.zip_unavailable')}>
+            🔒 {t('queue.zip_unavailable')}
+          </span>
+        )}
+        <button type="button" class="v-exp" aria-expanded={expanded} onClick={onToggle}>
           {expanded ? t('queue.details_hide') : t('queue.details_show')}
-        </span>
+        </button>
       </div>
       {item.status === 'paused' && item.stopReason && (
         /* Arrêt net : on dit pourquoi, et quoi faire. Sans ça l'utilisateur
@@ -2578,9 +2607,9 @@ function TaskCard({
         <div class="v-stop-reason" role="status">{t(`stop.${item.stopReason}`)}</div>
       )}
       {done && (
-        <div class="v-thanks" onClick={onSupport}>
+        <button type="button" class="v-thanks" onClick={onSupport}>
           <IconHeart />{t('credits.thanks')}
-        </div>
+        </button>
       )}
       {expanded && (
         <div class="v-details">

@@ -91,6 +91,7 @@
   "queue.resume": "फिर से शुरू करें",
   "queue.zipping": "Preparing the archive…",
   "queue.download": ".zip डाउनलोड करें",
+  "queue.zip_unavailable": "एन्क्रिप्टेड आर्काइव नहीं रखा गया: निर्यात फिर से चलाएँ",
   "queue.waiting": "प्रतीक्षा में…",
   "status.in_progress": "चल रहा है",
   "status.paused": "रुका हुआ",

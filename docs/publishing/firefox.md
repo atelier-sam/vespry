@@ -94,8 +94,8 @@ Vérifications manuelles à faire avant chaque release :
    - Tags : `discord`, `export`, `backup`, `ai`.
    - Captures d'écran : `docs/screenshots/*.png`.
    - Site dev : `https://github.com/atelier-sam/vespry`.
-   - Politique de confidentialité — URL ou texte. Voir section dédiée
-     `README.md` → Confidentialité, à reprendre intégralement.
+   - Politique de confidentialité — coller le texte de `PRIVACY.en.md`
+     (AMO l'affiche tel quel), ou l'URL `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md`.
 5. Choix licence : MIT (déjà déclaré dans le repo).
 
 ### Mises à jour

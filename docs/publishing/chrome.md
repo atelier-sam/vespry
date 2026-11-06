@@ -56,8 +56,9 @@ requêtes cross-origin sans cette déclaration).
 
 Le CWS exige une déclaration explicite (« Privacy practices »). Cocher :
 
-- **Authentication information** — le jeton de session Discord est lu pour
-  appeler l'API au nom de l'utilisateur. Non transmis à un serveur tiers.
+- **Authentication information** — le jeton de session Discord est lu dans
+  la page et gardé localement, pour détecter une reconnexion ; les requêtes
+  partent du client Discord de l'onglet. Jamais transmis à un serveur.
 - **Personal communications** — les messages exportés sont des
   communications personnelles. Restent en local sur l'ordinateur de
   l'utilisateur.
@@ -69,10 +70,8 @@ Ne **pas** cocher :
 - User activity (clics, navigation, etc.).
 - Website content (hors Discord).
 
-URL de la politique de confidentialité : pointer vers la section
-« Confidentialité » du README sur GitHub
-(`https://github.com/atelier-sam/vespry#-confidentialité`), ou copier
-cette section dans une page dédiée si CWS exige une URL distincte.
+URL de la politique de confidentialité : `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md`
+(politique complète en anglais ; la version française `PRIVACY.md` fait foi).
 
 ## Fiche du store
 

@@ -16,7 +16,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-informational)](package.json)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-290%20passants-brightgreen)](src/engine)
+[![Tests](https://img.shields.io/badge/tests-389%20passants-brightgreen)](src/engine)
 [![Crowdin](https://badges.crowdin.net/vespry/localized.svg)](https://crowdin.com/project/vespry)
 
 <br/>
@@ -115,7 +115,7 @@ tests.
 
 ### 🔒 100 % local
 Aucun serveur Vespry ne voit tes messages. Chiffrement AES-256 optionnel du
-zip, mot de passe jamais persisté.
+zip, mot de passe effacé dès l'archive fabriquée.
 
 </td>
 </tr>
@@ -124,7 +124,8 @@ zip, mot de passe jamais persisté.
 
 ### 🤖 Agent-ready
 Sortie JSON structurée avec schéma (`$schema`, `typeName`, `localPath`) :
-prête à être donnée à un agent IA ou à ton second cerveau.
+prête à être donnée à un agent IA ou à ton second cerveau. Format complet :
+[docs/SCHEMA.md](docs/SCHEMA.md).
 
 </td>
 <td width="50%" valign="top">
@@ -178,8 +179,9 @@ combinent en **ET** ou **OU**, et chacune peut être **inversée** (NON).
 **Export incrémental** — Un nouvel export ne récupère que les messages postés
 depuis la dernière fois. La date du dernier export est affichée.
 
-**Chiffrement AES-256** — Mot de passe en RAM uniquement, jamais persisté ni
-envoyé. Jauge de force. Avertissement clair : zip irrécupérable si oublié.
+**Chiffrement AES-256** — Mot de passe jamais envoyé, gardé le temps de
+l'export (pour reprendre après une coupure) puis effacé dès l'archive
+fabriquée. Jauge de force. Avertissement clair : zip irrécupérable si oublié.
 
 **Templates de nom de fichier** — `{guildName}-{date}.zip`,
 `{datetime}-{guildName}.zip`, avec aperçu en direct.
@@ -338,13 +340,15 @@ télécharges. Rien ne transite par un serveur Vespry.
 | Flux | Quand | Ce qui sort |
 |---|---|---|
 | **Discord API** | toujours | émis depuis ton onglet discord.com, par le client Discord |
+| **CDN Discord** | médias de l'export | téléchargement par lien signé, sans jeton |
 | **Stripe** | don uniquement | rien tant que tu ne donnes pas |
-| **Worker dons** | affichage du mur | lecture seule, agrégats publics |
-| **GitHub** | check de version | IP / User-Agent (requête anonyme) |
+| **Worker dons** | affichage du mur | lecture seule, soutiens publics |
+| **GitHub** | crédits et check de version | IP / User-Agent (requêtes anonymes) |
 | **Signalement schéma** | **opt-in, OFF** | uniquement les *noms* de nouveaux champs Discord |
+| **Signaler un problème** | si tu cliques | formulaire GitHub public, pré-rempli et **masqué** (noms de serveur et de salons, identifiants, liens, e-mails) ; rien ne part sans ton clic sur « Submit » |
 
 Aucune analytics, aucun pixel, aucun tracker. Détail complet dans
-[`PRIVACY.md`](PRIVACY.md).
+[`PRIVACY.md`](PRIVACY.md) ([English](PRIVACY.en.md)).
 
 <br/>
 
@@ -375,13 +379,13 @@ npm install
 npm run dev              # build watch + HMR Chrome
 npm run build            # build Chrome production -> dist/
 npm run build:firefox    # build Firefox production -> dist-firefox/
-npm run test             # tests unitaires (vitest) — 290 tests
+npm run test             # tests unitaires (vitest) — 389 tests
 npm run typecheck        # vérification de types
 npm run firefox:lint     # web-ext lint pour AMO
 ```
 
 TypeScript strict, Manifest V3, Vite, Preact. Le moteur d'export est couvert
-par **290 tests unitaires** : reprise d'un export interrompu, streaming
+par **389 tests unitaires** : reprise d'un export interrompu, streaming
 AES-256, suppression idempotente.
 
 <br/>

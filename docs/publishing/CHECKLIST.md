@@ -49,7 +49,7 @@ le script).
 - **Déclaration données** : cocher uniquement *Authentication information* +
   *Personal communications* (cohérent sur les 3 stores).
 - **Politique de confidentialité (URL)** :
-  `https://github.com/atelier-sam/vespry#-confidentialité`
+  `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md` (la version française `PRIVACY.md` fait foi)
   (⚠️ ancre GitHub avec tiret initial car le titre porte un emoji).
 - **Notes reviewers** : blocs prêts dans `chrome.md` (§ Avis aux reviewers) et
   `edge.md` (§ 7 Notes for certification).

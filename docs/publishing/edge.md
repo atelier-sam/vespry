@@ -109,11 +109,9 @@ Avant chaque soumission, vérifier :
      « Limited Use » sont à cocher : Vespry traite ces données **localement,
      uniquement pour la fonction principale (l'export)**, ne les vend pas,
      ne les transfère pas à des tiers.
-   - **Privacy policy URL** : pointer vers une page publique. Deux options :
-     - **Recommandé** : la section « Confidentialité » du README sur GitHub —
-       `https://github.com/atelier-sam/vespry#-confidentialité`. C'est honnête,
-       complet, et déjà rédigé.
-     - Ou héberger une page dédiée sur `https://atelier-sam.github.io/vespry/privacy`.
+   - **Privacy policy URL** : `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md` (politique complète en anglais ;
+     la version française `PRIVACY.md` fait foi). Pas la section du README, qui
+     n'en est qu'un résumé. Pas de page `atelier-sam.github.io` : elle n'existe pas.
 6. **Store listings** (au moins l'anglais) :
    - **Extension name** : `Vespry — Discord Export` (récupéré du manifest).
    - **Description** : reprendre les sections « Vespry » + « Le problème »

@@ -16,23 +16,28 @@ Détail par store : `chrome.md`, `edge.md`, `firefox.md`. Ce fichier est la
 | TODO/FIXME résiduels | `grep -rn TODO src/` | ✅ aucun |
 | Migration org `atelier-sam` | `git grep ateliersam86` | ✅ aucun résidu |
 
-Version figée : **1.0.0** (`package.json`, `CHANGELOG.md`). En release, la
-version vient du tag GitHub via `scripts/stamp-version.mjs` — voir §5.
+Version : celle de `package.json` du commit livré (`CHANGELOG.md` à jour).
+Pour une nouvelle version : `node scripts/stamp-version.mjs X.Y.Z`, commit,
+tag `vX.Y.Z` — voir §5.
 
 ## 2. Artefacts à soumettre
 
-Produits par `scripts/build-artifacts.sh` (ou à la main, cf. ci-dessous).
-Tous gitignorés (`*.zip`) — ce sont des livrables locaux à uploader, pas des
-fichiers du repo.
+Produits par `bash scripts/build-artifacts.sh` dans `release/<version>/`
+(gitignoré). Le script bâtit le COMMIT (HEAD, arbre propre exigé), pas l'arbre
+de travail : il extrait `git archive`, fait `npm ci`, rejoue les portes (tsc,
+tests, builds Chrome et Firefox, `web-ext lint` sans erreur), empaquette, puis
+vérifie la version du manifeste et écrit `SHA256SUMS` avec le sha du commit.
+Pas de GitHub Actions sur ce chemin (Gitea d'abord, cf. §5).
 
-| Store | Artefact | Build |
-|---|---|---|
-| Chrome Web Store **et** Edge | `vespry-1.0.0.zip` | `npm run build` puis `cd dist && zip -r ../vespry-1.0.0.zip .` |
-| Mozilla AMO | `web-ext-artifacts/vespry_discord_export-1.0.0.zip` | `npm run build:firefox && npm run firefox:package` |
-| AMO — code source (exigé MV3) | `vespry-source-1.0.0.zip` | `git archive --format=zip -o vespry-source-1.0.0.zip HEAD` |
+| Store | Artefact |
+|---|---|
+| Chrome Web Store **et** Edge | `vespry-<v>.zip` |
+| Mozilla AMO | `vespry_discord_export-<v>.zip` |
+| AMO — code source (exigé MV3) | `vespry-source-<v>.zip` (le zip même dont le build est sorti) |
 
 Avant upload, vérifier dans chaque zip : `manifest.json` à la racine,
-`manifest_version: 3`, `version: 1.0.0`, icônes 16/48/128 présentes.
+`manifest_version: 3`, icônes 16/48/128 présentes (la version est vérifiée par
+le script).
 
 ## 3. Métadonnées de fiche — prêtes à coller
 
@@ -67,8 +72,10 @@ Disponibles dans `docs/screenshots/` : `overlay.png`, `advanced.png`,
 
 ## 5. Mise en ligne — actions de Sam (externes)
 
-1. **Tag de release GitHub** `v1.0.0` → la CI (`release.yml`) build, stampe la
-   version et attache `vespry-1.0.0.zip` à la release.
+1. **Release Gitea** : tag annoté `vX.Y.Z` poussé (Gitea + miroir GitHub),
+   Release créée par l'API Gitea avec les zips de `release/<v>/` et
+   `SHA256SUMS` en pièces jointes. `release.yml` (GitHub Actions) reste sur le
+   miroir mais n'est plus sur le chemin : on n'attend pas sa sortie.
 2. **Chrome Web Store** — compte dev (5 $ une fois), upload `vespry-1.0.0.zip`,
    coller les métadonnées §3, soumettre. Review 2-7 j.
 3. **Microsoft Edge** — compte Partner Center (gratuit), **même zip**, logo

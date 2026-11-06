@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Vespry — mur des soutiens. Cloudflare Worker qui ingère les webhooks Ko-Fi et GitHub Sponsors et expose le flux des donateurs.",
+  "description": "Vespry — mur des soutiens. Cloudflare Worker qui encaisse les dons par Stripe Checkout et expose le flux des donateurs.",
   "license": "MIT",
   "scripts": {
     "dev": "wrangler dev",
@@ -12,9 +12,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4",
+    "@cloudflare/workers-types": "^5.20261104.1",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.2",
+    "vitest": "^4.1.12",
     "wrangler": "^4"
   }
 }

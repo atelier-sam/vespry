@@ -2,8 +2,9 @@
  * Version de l'extension.
  *
  * Source de vérité unique : la version du `manifest.json` que Chrome a chargé
- * (`chrome.runtime.getManifest()`). En CI, cette version est dérivée du tag de
- * release GitHub — jamais saisie à la main (voir .github/workflows/release.yml).
+ * (`chrome.runtime.getManifest()`), elle-même lue dans `package.json` au build
+ * (`scripts/stamp-version.mjs` pour la changer, `scripts/build-artifacts.sh`
+ * pour bâtir les zips depuis le commit exact).
  *
  * `checkForUpdate()` interroge l'API GitHub pour signaler une release plus
  * récente — utile surtout pour la distribution hors Chrome Web Store.

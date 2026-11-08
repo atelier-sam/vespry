@@ -18,6 +18,8 @@
 import { openOverlay } from '../../src/content/overlay/mount';
 import type { RawChannel, RawGuild, RawMessage, RawUser } from '../../src/engine/types';
 import { ChannelType } from '../../src/engine/types';
+import { t } from '../../src/ui/i18n';
+import { formatMegabytes } from '../../src/ui/locale-format';
 import type { QueueItemView } from '../../src/messaging';
 import type { DonorFeed } from '../../src/donors';
 
@@ -27,6 +29,9 @@ import type { DonorFeed } from '../../src/donors';
  * anglaise montrerait des messages en français. */
 const FR = (navigator.language || 'en').toLowerCase().startsWith('fr');
 const tr = (fr: string, en: string): string => (FR ? fr : en);
+/** Ligne de journal de démo : heure fixe (captures reproductibles), texte réel. */
+const demoLog = (time: string, key: string, params: Record<string, string | number>): string =>
+  `${time}  ${t(key, params)}`;
 
 /* ── Cast synthétique ─────────────────────────────────────────────────── */
 
@@ -128,15 +133,17 @@ const QUEUE: QueueItemView[] = [
     estimatedMessages: 12_480,
     assetsByKind: { image: 312, video: 18, audio: 24, file: 41 },
     reactions: 1_894,
+    // Mêmes clés et mêmes formats que le journal réel (controller.ts,
+    // journal()) : la capture montre ce que l'utilisateur lira, dans sa langue.
     log: [
-      '09:10:02  → #vespry…',
-      '09:10:04  #vespry · +100 msg',
-      '09:10:09  #vespry · ↓ 12 image(s)',
-      `09:10:21  ✓ #vespry — ${tr('1 204', '1,204')} msg`,
-      `09:11:33  → #${tr('général', 'general')}…`,
-      `09:13:50  ✓ #${tr('général', 'general')} — ${tr('6 902', '6,902')} msg`,
-      `09:15:12  ✓ #roadmap — ${tr('4 374', '4,374')} msg`,
-      '09:15:40  📦 Paquet prêt — 184.6 Mo',
+      demoLog('09:10:02', 'log.channel_start', { channel: 'vespry' }),
+      demoLog('09:10:04', 'log.batch', { channel: 'vespry', count: 100 }),
+      demoLog('09:10:09', 'log.media', { channel: 'vespry', kind: t('stat.images'), count: 12 }),
+      demoLog('09:10:21', 'log.channel_done', { channel: 'vespry', total: 1204 }),
+      demoLog('09:11:33', 'log.channel_start', { channel: tr('général', 'general') }),
+      demoLog('09:13:50', 'log.channel_done', { channel: tr('général', 'general'), total: 6902 }),
+      demoLog('09:15:12', 'log.channel_done', { channel: 'roadmap', total: 4374 }),
+      demoLog('09:15:40', 'log.package_ready', { size: formatMegabytes(184_600_000) }),
     ],
     zipReady: true,
   },

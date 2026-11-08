@@ -1,4 +1,4 @@
-# Pré-vol publication — Vespry 1.0.0
+# Pré-vol publication — Vespry 1.1.0
 
 Checklist consolidée de la première mise en ligne sur les trois stores.
 Détail par store : `chrome.md`, `edge.md`, `firefox.md`. Ce fichier est la
@@ -43,8 +43,9 @@ le script).
 
 - **Nom** : `Vespry — Discord Export` (vient du manifest).
 - **Description courte** : champ `description` du manifest.
-- **Description longue** : sections « Vespry » + « Fonctionnalités » +
-  « face aux autres outils » du `README.md`.
+- **Description longue** : sections « Why Vespry » + « Discreet mode » +
+  « Features » du `README.md` (anglais), « Pourquoi Vespry » + « Mode
+  discret » + « Fonctionnalités » de `README.fr.md` pour la fiche française.
 - **Justifications de permissions** : tableaux dans `chrome.md` / `edge.md`.
 - **Déclaration données** : cocher uniquement *Authentication information* +
   *Personal communications* (cohérent sur les 3 stores).
@@ -77,13 +78,26 @@ Dans `docs/screenshots/en/` et `fr/` : `overlay.png`, `advanced.png`,
 l'interface suivent la langue ; mur des soutiens vide, comme en vrai).
 `docs/screenshots/logo-300.png` : tuile Edge 300×300.
 
+### Images du README (bannière, boutons de don)
+
+```sh
+node scripts/brand/render.mjs   # -> docs/brand/hero-<en|fr>-<dark|light>.png, donate-<en|fr>-<3|5|10|custom>.png
+```
+
+À relancer après les captures (la bannière reprend `overlay.png`) ou quand un
+libellé de palier change dans `src/locales`.
+
 ## 5. Mise en ligne — actions de Sam (externes)
 
 1. **Release Gitea** : tag annoté `vX.Y.Z` poussé (Gitea + miroir GitHub),
    Release créée par l'API Gitea avec les zips de `release/<v>/` et
    `SHA256SUMS` en pièces jointes. `release.yml` (GitHub Actions) reste sur le
    miroir mais n'est plus sur le chemin : on n'attend pas sa sortie.
-2. **Chrome Web Store** — compte dev (5 $ une fois), upload `vespry-1.0.0.zip`,
+   **Release miroir GitHub** par l'API (`gh api repos/atelier-sam/vespry/releases`,
+   jamais `gh release` ni Actions), mêmes pièces jointes, notes en anglais qui
+   commencent par les liens des fiches store dès qu'elles existent : c'est la
+   page que voient les visiteurs GitHub, et le lien « release » du README.
+2. **Chrome Web Store** — compte dev (5 $ une fois), upload `vespry-<v>.zip`,
    coller les métadonnées §3, soumettre. Review 2-7 j.
 3. **Microsoft Edge** — compte Partner Center (gratuit), **même zip**, logo
    300×300, justifications par permission, soumettre. Review 1-3 j.
@@ -95,7 +109,25 @@ l'interface suivent la langue ; mur des soutiens vide, comme en vrai).
 
 ## 6. Après publication
 
-- Renseigner les URLs des fiches store dans le `README.md` (boutons
-  d'installation).
+- Remplacer les badges « coming soon » / « bientôt » de `README.md` et
+  `README.fr.md` par les liens des fiches store, et passer le lien
+  d'accueil du dépôt GitHub (aujourd'hui la page de dons) sur la fiche
+  Chrome Web Store.
+- `scripts/publier-stores.sh` (à écrire après la première acceptation dans
+  chaque store) : envoie le zip d'une version taguée aux trois stores par
+  leurs API, pour que chaque release Gitea parte en mise à jour sans geste
+  manuel.
 - Mettre en place l'upload automatisé CWS (API + OAuth) dans la CI une fois le
   compte dev créé — cf. `chrome.md` § Mises à jour ultérieures.
+
+## 7. Vitrine GitHub — ✅ 2026-11-08
+
+- README anglais (`README.md`) et français (`README.fr.md`), bannière sombre
+  et claire, boutons de don vers `/donate?amount=3|5|10` du worker.
+- Description, lien d'accueil (page de dons) et 20 sujets posés par
+  `gh api repos/atelier-sam/vespry` (métadonnées seulement, autorisé).
+- `.github/FUNDING.yml` : bouton Sponsor vers la page de dons.
+- `SECURITY.md` : signalement privé.
+- Reste à Sam (interface GitHub seulement, pas d'API) : image d'aperçu social
+  (Settings → General → Social preview) : déposer
+  `docs/brand/social-preview.png` (1280×640, rendu par `scripts/brand/render.mjs`).

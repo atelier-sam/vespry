@@ -11,7 +11,9 @@
  *
  * Usage : node scripts/brand/render.mjs
  *   PLAYWRIGHT_CHROME=<chemin> force le binaire Chromium.
- * Sortie : docs/brand/{hero-<lang>-<thème>,donate-<lang>-<montant>}.png
+ * Sortie : docs/brand/{hero-<lang>-<thème>,donate-<lang>-<montant>}.png, et
+ *   social-preview.png (1280×640, l'aperçu des liens partagés : à déposer à la
+ *   main dans Settings → General → Social preview, GitHub n'a pas d'API).
  *
  * Sources : icône src/assets/icon-128.png, capture docs/screenshots/<lang>/
  * overlay.png (à refaire d'abord par scripts/screenshots/capture.mjs), libellés
@@ -65,11 +67,11 @@ const THEMES = {
 
 const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, Roboto, sans-serif`;
 
-function heroHtml(c, th, shot) {
+function heroHtml(c, th, shot, height = 520) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { width: 1280px; height: 520px; overflow: hidden; font-family: ${FONT}; background: ${th.bg}; color: ${th.ink}; }
-  .wrap { position: relative; height: 100%; padding: 64px 0 0 72px; }
+  body { width: 1280px; height: ${height}px; overflow: hidden; font-family: ${FONT}; background: ${th.bg}; color: ${th.ink}; }
+  .wrap { position: relative; height: 100%; padding: ${64 + (height - 520) / 2}px 0 0 72px; }
   .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 30px; }
   .brand img { width: 52px; height: 52px; image-rendering: pixelated; }
   .brand b { font-size: 26px; font-weight: 800; letter-spacing: -.01em; }
@@ -79,7 +81,7 @@ function heroHtml(c, th, shot) {
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; max-width: 540px; }
   .chips span { font-size: 14px; font-weight: 600; padding: 7px 13px; border-radius: 999px; background: ${th.chipBg}; border: 1px solid ${th.chipLine}; }
   .browsers { margin-top: 18px; font-size: 14px; font-weight: 600; color: ${th.muted}; }
-  .shot { position: absolute; right: -150px; top: 70px; width: 760px; border-radius: 14px; box-shadow: ${th.shot};
+  .shot { position: absolute; right: -150px; top: ${70 + (height - 520) / 2}px; width: 760px; border-radius: 14px; box-shadow: ${th.shot};
           transform: perspective(1600px) rotateY(-14deg) rotateX(4deg); border: 1px solid ${th.chipLine}; }
   </style></head><body><div class="wrap">
     <div class="brand"><img src="${icon}" alt=""><b>Vespry</b></div>
@@ -131,6 +133,15 @@ for (const lang of ['en', 'fr']) {
   await page.setContent(buttonHtml('💜', '', L['support.custom']), { waitUntil: 'load' });
   await page.locator('body').screenshot({ path: join(outDir, `donate-${lang}-custom.png`), omitBackground: true });
   console.log('  ✓', `donate-${lang}-custom.png`);
+}
+
+// Aperçu social : bannière anglaise sombre au format 2:1 que GitHub recommande.
+{
+  const shot = await dataUrl(join(root, 'docs', 'screenshots', 'en', 'overlay.png'));
+  const social = await browser.newPage({ deviceScaleFactor: 1, viewport: { width: 1280, height: 640 } });
+  await social.setContent(heroHtml(COPY.en, THEMES.dark, shot, 640), { waitUntil: 'load' });
+  await social.screenshot({ path: join(outDir, 'social-preview.png') });
+  console.log('  ✓ social-preview.png');
 }
 
 await browser.close();

@@ -68,6 +68,7 @@ import {
   renderZipFilename,
 } from '../../ui/zip-filename';
 import { t } from '../../ui/i18n';
+import { formatDate, formatEuros, formatMessageTime } from '../../ui/locale-format';
 import {
   humanize, renderInlineHtml,
   type MentionLabels, type ResolvedMentions,
@@ -109,12 +110,15 @@ function guildIconUrl(g: RawGuild): string | null {
 /** Libellé brut d'une zone (sans le préfixe de négation). */
 function zoneCoreLabel(z: SelectionZone, channels: RawChannel[]): string {
   const fmt = (ms?: number): string =>
-    ms === undefined ? '…' : new Date(ms).toLocaleDateString('fr-FR');
+    ms === undefined ? '…' : formatDate(ms);
+  // Séparateur « libellé : valeur » porté par la clé : le français garde son
+  // espace avant les deux-points, le japonais et le chinois leur « ： ».
+  const labeled = (label: string, value: string): string => t('zone.labeled', { label, value });
   switch (z.kind) {
     case 'period': return `${t('zone.period')} ${fmt(z.afterMs)} → ${fmt(z.beforeMs)}`;
-    case 'author': return `${t('zone.author')} : ${z.query}`;
-    case 'content': return `${t('zone.keyword')} : ${z.query}`;
-    case 'mention': return `${t('zone.mention')} : ${z.query}`;
+    case 'author': return labeled(t('zone.author'), z.query);
+    case 'content': return labeled(t('zone.keyword'), z.query);
+    case 'mention': return labeled(t('zone.mention'), z.query);
     case 'pinned': return t('zone.pinned');
     case 'attachment': return t('zone.attachment');
     case 'image': return t('zone.image');
@@ -1322,9 +1326,7 @@ function avatarUrl(u: RawUser): string {
 
 /** Horodatage court et lisible. */
 function formatTime(ts: string): string {
-  return new Date(ts).toLocaleString('fr-FR', {
-    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
+  return formatMessageTime(ts);
 }
 
 /** Étiquettes de mentions Discord, traduites dans la langue de l'utilisateur. */
@@ -2202,9 +2204,9 @@ const SUPPORT_PRESETS: { cents: number; key: string }[] = [
 const MIN_DON_CENTS = 100;
 const MAX_DON_CENTS = 100_000;
 
-/** Formate un montant en centimes vers un libellé euros court. */
+/** Formate un montant en centimes vers un libellé euros, symbole compris. */
 function euros(cents: number): string {
-  return (cents / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  return formatEuros(cents);
 }
 
 /**
@@ -2295,7 +2297,7 @@ function SupportModal({
                   setCustomEur('');
                 }}
               >
-                <b>{euros(p.cents)} €</b>
+                <b>{euros(p.cents)}</b>
                 <span>{t(p.key)}</span>
               </button>
             ))}
@@ -2347,7 +2349,7 @@ function SupportModal({
             {status === 'pending'
               ? t('support.processing')
               : configured
-                ? t('support.pay', { amount: `${euros(amountCents)} €` })
+                ? t('support.pay', { amount: euros(amountCents) })
                 : t('credits.donate_soon')}
           </button>
           {status === 'error' && (

@@ -21,6 +21,8 @@ import { GET_PACE_KIND, isPaceMode } from '../../engine/pace-setting';
 import { SCHEMA_REPORT_KIND, type SchemaReportMessage } from '../../engine/schema-report';
 import { getDetectedUnknowns } from '../../engine/schema-watch';
 import { recordEvent } from '../../diagnostics';
+import { t } from '../../ui/i18n';
+import { formatClock, formatMegabytes } from '../../ui/locale-format';
 import {
   ALL_MEDIA,
   DEFAULT_FORMATS,
@@ -154,17 +156,45 @@ async function downloadViaWorker(url: string, filename: string): Promise<void> {
   await chrome.runtime.sendMessage({ kind: 'do-download', url, filename });
 }
 
-const KIND_LABEL: Record<AssetKind, string> = {
-  image: 'image(s)',
-  video: 'vidéo(s)',
-  audio: 'audio',
-  file: 'fichier(s)',
-  emoji: 'emoji',
-  avatar: 'avatar(s)',
+/**
+ * Clé du libellé de chaque type de média dans le journal. Les quatre types
+ * qui ont déjà un nom dans le panneau de statistiques le réutilisent ; le
+ * libellé s'écrit « Images : 12 » (jamais « 12 image(s) ») pour que le
+ * pluriel ne dépende pas de la langue (russe, polonais, finnois…).
+ */
+const KIND_LABEL_KEY: Record<AssetKind, string> = {
+  image: 'stat.images',
+  video: 'stat.videos',
+  audio: 'stat.audio',
+  file: 'stat.files',
+  emoji: 'log.kind_emoji',
+  avatar: 'log.kind_avatar',
 };
 
+/** Heure du journal, dans le format de la langue de l'interface (24 h). */
 function clock(): string {
-  return new Date().toLocaleTimeString('fr-FR', { hour12: false });
+  return formatClock(new Date());
+}
+
+type LogParams = Record<string, string | number>;
+
+/**
+ * UNIQUE porte d'entrée du journal d'export visible : horodate et traduit.
+ * Toute ligne passe par une clé `log.*` (ou une clé existante réutilisée) ;
+ * `log-i18n.test.ts` refuse qu'un texte en dur ou un `clock()` hors d'ici
+ * réapparaisse (le journal était écrit en français pour les 15 langues).
+ *
+ * Le journal est aussi recopié dans le rapport de bug (`diagnostics.ts`), qui
+ * masque les noms de salon : `#{channel}` doit rester suivi de « … », « · »,
+ * « — » ou de la fin de ligne dans chaque langue (testé).
+ */
+function journal(key: string, params?: LogParams): string {
+  return `${clock()}  ${t(key, params)}`;
+}
+
+/** Raison d'un arrêt net, dans la langue de l'interface (clés `stop.*`). */
+function stopText(kind: StopKind): string {
+  return t(`stop.${kind}`);
 }
 
 const sleep = (ms: number): Promise<void> =>
@@ -314,19 +344,23 @@ export async function collectGuildThreads(
 /** Nom d'affichage d'une conversation privée, dérivé de ses destinataires. */
 function dmName(c: RawChannel): string {
   const names = (c.recipients ?? []).map((r) => r.global_name ?? r.username);
-  return names.length > 0 ? names.join(', ') : 'Conversation';
+  return names.length > 0 ? names.join(', ') : t('overlay.dm_unnamed');
 }
 
 function formatLog(e: RunnerLogEvent): string {
   switch (e.type) {
     case 'channel-start':
-      return `${clock()}  → #${e.channel}…`;
+      return journal('log.channel_start', { channel: e.channel });
     case 'batch':
-      return `${clock()}  #${e.channel} · +${e.count} msg`;
+      return journal('log.batch', { channel: e.channel, count: e.count });
     case 'media':
-      return `${clock()}  #${e.channel} · ↓ ${e.count} ${KIND_LABEL[e.kind]}`;
+      return journal('log.media', {
+        channel: e.channel,
+        kind: t(KIND_LABEL_KEY[e.kind]),
+        count: e.count,
+      });
     case 'channel-done':
-      return `${clock()}  ✓ #${e.channel} — ${e.total} msg`;
+      return journal('log.channel_done', { channel: e.channel, total: e.total });
   }
 }
 
@@ -422,7 +456,7 @@ export class VespryController {
         );
       }
     } catch (e) {
-      this.error = `Erreur d'initialisation : ${e instanceof Error ? e.message : String(e)}`;
+      this.error = t('overlay.init_error', { error: e instanceof Error ? e.message : String(e) });
       this.ready = true;
       this.notify();
       return;
@@ -564,7 +598,7 @@ export class VespryController {
       if (run?.stopReason === 'no-tab' || run?.stopReason === 'no-client') {
         item.status = 'in_progress';
         delete item.stopReason;
-        pushLog(item.log, `${clock()}  ↻ onglet Discord ouvert — reprise`);
+        pushLog(item.log, journal('log.tab_reopened'));
       }
     }
     for (const p of this.purgeQueue) {
@@ -572,7 +606,7 @@ export class VespryController {
         && (p.stopReason === 'no-tab' || p.stopReason === 'no-client')) {
         p.status = 'in_progress';
         delete p.stopReason;
-        pushLog(p.log, `${clock()}  ↻ onglet Discord ouvert — reprise`);
+        pushLog(p.log, journal('log.tab_reopened'));
       }
     }
     this.notify();
@@ -820,15 +854,17 @@ export class VespryController {
     // serveur, le `sinceMs` reste indéfini et le run est en fait un export
     // complet — c'était silencieux et trompeur. On garde l'export complet
     // (c'est le bon comportement), mais on signale clairement dans le log.
-    let incrementalNote: string | null = null;
+    // Fabrique, pas texte : l'horodatage est pris au moment où la tâche est
+    // créée (plus bas), comme avant, pas pendant la découverte des fils.
+    let incrementalNote: (() => string) | null = null;
     if (incremental) {
       const since = await this.lastExportTime(guild.id);
       if (since !== undefined) {
         options.sinceMs = since;
         const d = new Date(since).toISOString().replace('T', ' ').slice(0, 16);
-        incrementalNote = `↻ Export incrémental — messages postés depuis ${d} UTC.`;
+        incrementalNote = () => journal('log.incremental_since', { date: d });
       } else {
-        incrementalNote = '↻ Incrémental coché mais aucun export précédent pour ce serveur — premier export complet.';
+        incrementalNote = () => journal('log.incremental_first');
       }
     }
     // Fils : serveurs (`withThreads`) et DMs (`withDmThreads`), chacun avec
@@ -849,7 +885,7 @@ export class VespryController {
     }
     const runId = await planGuildExport(this.store, guild, expanded, options);
     const initialLog: string[] = [];
-    if (incrementalNote) initialLog.push(`${clock()}  ${incrementalNote}`);
+    if (incrementalNote) initialLog.push(incrementalNote());
     this.queue.push({
       runId,
       guildId: guild.id,
@@ -912,7 +948,7 @@ export class VespryController {
       // Cas dégénéré : rien à supprimer. On marque completed et on notifie.
       // L'UI affichera « 0/0 supprimés » — légitime si la sélection vide.
       item.status = 'completed';
-      pushLog(item.log, `${clock()}  ⚠ aucun message à supprimer`);
+      pushLog(item.log, journal('log.purge_empty'));
       this.purgeQueue.push(item);
       this.notify();
       return runId;
@@ -920,7 +956,7 @@ export class VespryController {
 
     if (!this.api) {
       item.status = 'failed';
-      pushLog(item.log, `${clock()}  ✗ pas de session Discord active`);
+      pushLog(item.log, journal('log.purge_no_session'));
       this.purgeQueue.push(item);
       this.notify();
       return runId;
@@ -928,7 +964,7 @@ export class VespryController {
 
     pushLog(
       item.log,
-      `${clock()}  🗑 purge de ${messageIds.length} message(s) dans #${channelName}`,
+      journal('log.purge_start', { count: messageIds.length, channel: channelName }),
     );
     this.purgeQueue.push(item);
     this.notify();
@@ -959,7 +995,7 @@ export class VespryController {
   private async runPurgeItem(item: PurgeItem): Promise<void> {
     if (!this.api) {
       item.status = 'failed';
-      pushLog(item.log, `${clock()}  ✗ session Discord perdue`);
+      pushLog(item.log, journal('log.purge_session_lost'));
       this.notify();
       return;
     }
@@ -984,7 +1020,7 @@ export class VespryController {
           item.pending.unshift(messageId);
           item.stopReason = e.kind as StopKind;
           item.status = 'failed';
-          pushLog(item.log, `${clock()}  ⏸ ${stopMessage(e.kind)}`);
+          pushLog(item.log, journal('log.stopped', { reason: stopText(e.kind as StopKind) }));
           this.notify();
           return;
         }
@@ -995,25 +1031,19 @@ export class VespryController {
             // Discord et relance la purge (les ids restants sont déjà sortis
             // de `pending`, donc le redémarrage repart de zéro côté UI ;
             // pour la v1 c'est acceptable, on documentera dans #6).
-            pushLog(
-              item.log,
-              `${clock()}  ✗ session Discord expirée — reconnecte-toi puis relance la purge`,
-            );
+            pushLog(item.log, journal('log.purge_session_expired'));
             item.status = 'failed';
             this.notify();
             return;
           }
           if (e.kind === 'forbidden') {
             item.failed += 1;
-            pushLog(
-              item.log,
-              `${clock()}  ⊘ 403 sur message ${messageId} — accès refusé`,
-            );
+            pushLog(item.log, journal('log.purge_forbidden', { id: messageId }));
           } else {
             item.failed += 1;
             pushLog(
               item.log,
-              `${clock()}  ✗ message ${messageId} — ${e.message}`,
+              journal('log.purge_message_failed', { id: messageId, error: e.message }),
             );
           }
         } else {
@@ -1022,8 +1052,10 @@ export class VespryController {
           item.failed += 1;
           pushLog(
             item.log,
-            `${clock()}  ✗ message ${messageId} — `
-            + (e instanceof Error ? e.message : String(e)),
+            journal('log.purge_message_failed', {
+              id: messageId,
+              error: e instanceof Error ? e.message : String(e),
+            }),
           );
         }
       }
@@ -1032,8 +1064,12 @@ export class VespryController {
       if (processed % logEvery === 0 || item.pending.length === 0) {
         pushLog(
           item.log,
-          `${clock()}  · ${processed}/${item.total} traités (`
-          + `${item.done} OK, ${item.failed} échec)`,
+          journal('log.purge_progress', {
+            processed,
+            total: item.total,
+            done: item.done,
+            failed: item.failed,
+          }),
         );
       }
       this.notify();
@@ -1048,8 +1084,10 @@ export class VespryController {
     item.status = item.failed > 0 ? 'partial' : 'completed';
     pushLog(
       item.log,
-      `${clock()}  ${item.failed > 0 ? '⚠' : '✓'} terminé — `
-      + `${item.done} supprimé(s), ${item.failed} échec(s)`,
+      journal(item.failed > 0 ? 'log.purge_finished_errors' : 'log.purge_finished', {
+        done: item.done,
+        failed: item.failed,
+      }),
     );
 
     // Notification système (toast natif). Le service worker écoute déjà
@@ -1131,7 +1169,7 @@ export class VespryController {
     try {
       await this.startDownload(url, filename);
     } catch (e) {
-      pushLog(item.log, `${clock()}  ✗ Téléchargement impossible : ${String(e)}`);
+      pushLog(item.log, journal('log.download_failed', { error: String(e) }));
       this.notify();
     }
     // Le service worker a lancé le téléchargement, qui a résolu l'URL : on la
@@ -1172,15 +1210,17 @@ export class VespryController {
       const { blob } = await packageRun(this.store, item.runId);
       await this.store.forgetZipPassword(item.runId);
       item.zip = blob;
-      pushLog(item.log, `${clock()}  📦 Paquet prêt — ${(blob.size / 1e6).toFixed(1)} Mo`);
+      pushLog(item.log, journal('log.package_ready', { size: formatMegabytes(blob.size) }));
       return blob;
     } catch (e) {
       if (e instanceof ZipPasswordGoneError) {
         item.zipUnavailable = true;
-        pushLog(item.log, `${clock()}  🔒 Archive chiffrée non conservée : relance l'export pour la refaire`);
+        pushLog(item.log, journal('log.locked', { text: t('queue.zip_unavailable') }));
         return null;
       }
-      pushLog(item.log, `${clock()}  ✗ Paquet impossible : ${e instanceof Error ? e.message : String(e)}`);
+      pushLog(item.log, journal('log.package_failed', {
+        error: e instanceof Error ? e.message : String(e),
+      }));
       recordEvent('error', `buildZip(${item.runId}): ${e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e)}`);
       return null;
     }
@@ -1280,7 +1320,7 @@ export class VespryController {
       // panneau (pushLog ↓). On enregistre la version complète (stack si
       // dispo) dans le buffer diagnostic pour étoffer le rapport GitHub.
       status = 'failed';
-      pushLog(item.log, `${clock()}  ✗ ${e instanceof Error ? e.message : String(e)}`);
+      pushLog(item.log, journal('log.error', { error: e instanceof Error ? e.message : String(e) }));
       recordEvent(
         'error',
         `runItem(${item.runId}): ${e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e)}`,
@@ -1293,7 +1333,7 @@ export class VespryController {
       const run = await this.store.getRun(item.runId);
       if (run?.stopReason) {
         item.stopReason = run.stopReason;
-        pushLog(item.log, `${clock()}  ⏸ ${stopMessage(run.stopReason)}`);
+        pushLog(item.log, journal('log.stopped', { reason: stopText(run.stopReason) }));
       }
     } else {
       delete item.stopReason;
@@ -1345,7 +1385,7 @@ export class VespryController {
       estimatedMessages: null,
       assetsByKind: byKind,
       reactions: 0,
-      log: [`${clock()}  ↻ run repris depuis le checkpoint`],
+      log: [journal('log.resumed')],
       zip: null,
       ...(status === 'paused' && stopReason ? { stopReason } : {}),
     };

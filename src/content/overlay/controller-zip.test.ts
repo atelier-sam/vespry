@@ -11,6 +11,7 @@ import { VespryController } from './controller';
 import { CheckpointStore } from '../../engine/checkpoint-store';
 import { ALL_MEDIA, type ExportRun } from '../../engine/checkpoint-types';
 import { FakeTransport, instantPacer, ok } from '../../engine/test-fakes';
+import { t } from '../../ui/i18n';
 import type { TransportRequest, TransportResponse } from '../../engine/transport';
 
 const ME = { id: '123456789012345678', username: 'moi' };
@@ -124,7 +125,9 @@ describe('tâche terminée reconstruite au démarrage', () => {
     const runId = await seedCompletedRun();
     const { c } = await restartedController(vi.fn(async () => { throw new Error('downloads refusé'); }));
     await expect(c.downloadZip(runId)).resolves.toBeUndefined();
-    expect(view(c, runId)?.log.some((l) => l.includes('Téléchargement impossible'))).toBe(true);
+    // Le journal est dans la langue de l'interface : on compare à la clé, pas à un texte français.
+    const line = t('log.download_failed', { error: 'Error: downloads refusé' });
+    expect(view(c, runId)?.log.some((l) => l.endsWith(line))).toBe(true);
   });
 });
 
@@ -150,7 +153,7 @@ describe('archive chiffrée : le mot de passe ne reste pas dans le checkpoint', 
     const v = view(c, runId);
     expect(v?.zipUnavailable).toBe(true);
     expect(v?.zipReady).toBe(false);
-    expect(v?.log.some((l) => l.includes('Archive chiffrée non conservée'))).toBe(true);
+    expect(v?.log.some((l) => l.includes(t('queue.zip_unavailable')))).toBe(true);
   });
 
   it('contrôle positif : sans mot de passe, le paquet se refait à chaque redémarrage', async () => {

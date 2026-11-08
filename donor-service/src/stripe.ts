@@ -32,6 +32,12 @@ export interface CheckoutParams {
   isPublic: boolean;
   /** Origine publique du Worker — base des URLs de retour. */
   origin: string;
+  /**
+   * `web` : don lancé depuis la page publique `/donate` (onglet ordinaire).
+   * Les pages de retour montrent alors un lien au lieu de se refermer.
+   * Absent : don lancé depuis la popup de l'extension.
+   */
+  via?: 'web';
 }
 
 /**
@@ -46,11 +52,12 @@ export function checkoutSessionBody(p: CheckoutParams): string {
   body.set('line_items[0][price_data][currency]', 'eur');
   body.set('line_items[0][price_data][unit_amount]', String(p.amountCents));
   body.set('line_items[0][price_data][product_data][name]', 'Soutien à Vespry');
+  const via = p.via === 'web' ? '&via=web' : '';
   body.set(
     'success_url',
-    `${p.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+    `${p.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}${via}`,
   );
-  body.set('cancel_url', `${p.origin}/checkout/cancel`);
+  body.set('cancel_url', `${p.origin}/checkout/cancel${p.via === 'web' ? '?via=web' : ''}`);
   body.set('metadata[isPublic]', p.isPublic ? 'true' : 'false');
   if (p.donorName) body.set('metadata[donorName]', p.donorName);
   if (p.message) body.set('metadata[message]', p.message);

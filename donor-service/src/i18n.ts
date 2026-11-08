@@ -17,6 +17,10 @@ export interface PageStrings {
   cancelTitle: string;
   cancelHeading: string;
   cancelBody: string;
+  /** Pages ouvertes depuis le web (lien GitHub), pas depuis l'extension. */
+  back: string;
+  webSuccessBody: string;
+  webCancelBody: string;
 }
 
 const STRINGS: Record<Locale, PageStrings> = {
@@ -27,6 +31,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Donation cancelled — Vespry',
     cancelHeading: 'Donation cancelled',
     cancelBody: 'No worries, nothing was charged. You can close this window.',
+    back: 'Back to Vespry',
+    webSuccessBody: 'Your support joins the Vespry wall. Thank you for keeping it free.',
+    webCancelBody: 'No worries, nothing was charged.',
   },
   fr: {
     successTitle: 'Merci — Vespry',
@@ -35,6 +42,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Don annulé — Vespry',
     cancelHeading: 'Don annulé',
     cancelBody: "Aucun souci, rien n'a été débité. Tu peux fermer cette fenêtre.",
+    back: 'Retour à Vespry',
+    webSuccessBody: 'Ton soutien rejoint le mur de Vespry. Merci de le garder gratuit.',
+    webCancelBody: 'Aucun souci, rien n\'a été débité.',
   },
   it: {
     successTitle: 'Grazie — Vespry',
@@ -43,6 +53,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Donazione annullata — Vespry',
     cancelHeading: 'Donazione annullata',
     cancelBody: "Nessun problema, non è stato addebitato nulla. Puoi chiudere questa finestra.",
+    back: 'Torna a Vespry',
+    webSuccessBody: 'Il tuo sostegno si unisce al muro di Vespry. Grazie per mantenerlo gratuito.',
+    webCancelBody: 'Nessun problema, non è stato addebitato nulla.',
   },
   es: {
     successTitle: 'Gracias — Vespry',
@@ -51,6 +64,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Donación cancelada — Vespry',
     cancelHeading: 'Donación cancelada',
     cancelBody: 'No te preocupes, no se cobró nada. Puedes cerrar esta ventana.',
+    back: 'Volver a Vespry',
+    webSuccessBody: 'Tu apoyo se une al muro de Vespry. Gracias por mantenerlo gratuito.',
+    webCancelBody: 'No te preocupes, no se cobró nada.',
   },
   de: {
     successTitle: 'Danke — Vespry',
@@ -59,6 +75,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Spende abgebrochen — Vespry',
     cancelHeading: 'Spende abgebrochen',
     cancelBody: 'Keine Sorge, es wurde nichts abgebucht. Du kannst dieses Fenster schließen.',
+    back: 'Zurück zu Vespry',
+    webSuccessBody: 'Deine Unterstützung kommt auf die Vespry-Wand. Danke, dass du Vespry kostenlos hältst.',
+    webCancelBody: 'Keine Sorge, es wurde nichts abgebucht.',
   },
   pt: {
     successTitle: 'Obrigado — Vespry',
@@ -67,6 +86,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Doação cancelada — Vespry',
     cancelHeading: 'Doação cancelada',
     cancelBody: 'Tudo bem, nada foi cobrado. Você pode fechar esta janela.',
+    back: 'Voltar ao Vespry',
+    webSuccessBody: 'Seu apoio entra no mural do Vespry. Obrigado por mantê-lo gratuito.',
+    webCancelBody: 'Sem problemas, nada foi cobrado.',
   },
   ru: {
     successTitle: 'Спасибо — Vespry',
@@ -75,6 +97,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Платёж отменён — Vespry',
     cancelHeading: 'Платёж отменён',
     cancelBody: 'Ничего страшного, ничего не списано. Можете закрыть это окно.',
+    back: 'Вернуться к Vespry',
+    webSuccessBody: 'Ваша поддержка появится на стене Vespry. Спасибо, что помогаете ему оставаться бесплатным.',
+    webCancelBody: 'Не волнуйтесь, деньги не списаны.',
   },
   ja: {
     successTitle: 'ありがとうございました — Vespry',
@@ -83,6 +108,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: '寄付がキャンセルされました — Vespry',
     cancelHeading: '寄付がキャンセルされました',
     cancelBody: 'ご心配なく、課金はされていません。このウィンドウを閉じて構いません。',
+    back: 'Vespry に戻る',
+    webSuccessBody: 'あなたの支援が Vespry の壁に加わります。無料で続けられるのはあなたのおかげです。',
+    webCancelBody: 'ご安心ください。請求は発生していません。',
   },
   ko: {
     successTitle: '감사합니다 — Vespry',
@@ -91,6 +119,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: '기부 취소됨 — Vespry',
     cancelHeading: '기부 취소됨',
     cancelBody: '걱정 마세요, 청구된 금액이 없습니다. 이 창을 닫으셔도 됩니다.',
+    back: 'Vespry로 돌아가기',
+    webSuccessBody: '후원이 Vespry 후원 벽에 올라갑니다. 무료로 유지할 수 있게 해 주셔서 감사합니다.',
+    webCancelBody: '걱정 마세요. 결제되지 않았습니다.',
   },
   zh: {
     successTitle: '感谢 — Vespry',
@@ -99,6 +130,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: '已取消捐赠 — Vespry',
     cancelHeading: '已取消捐赠',
     cancelBody: '别担心,未收取任何费用。你可以关闭此窗口。',
+    back: '返回 Vespry',
+    webSuccessBody: '你的支持已加入 Vespry 支持墙。感谢你让它保持免费。',
+    webCancelBody: '别担心，没有扣款。',
   },
   tr: {
     successTitle: 'Teşekkürler — Vespry',
@@ -107,6 +141,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Bağış iptal edildi — Vespry',
     cancelHeading: 'Bağış iptal edildi',
     cancelBody: 'Endişelenme, hiçbir ücret tahsil edilmedi. Bu pencereyi kapatabilirsin.',
+    back: 'Vespry\'ye dön',
+    webSuccessBody: 'Desteğin Vespry duvarına ekleniyor. Ücretsiz kalmasına yardım ettiğin için teşekkürler.',
+    webCancelBody: 'Merak etme, hiçbir ücret alınmadı.',
   },
   pl: {
     successTitle: 'Dziękuję — Vespry',
@@ -115,6 +152,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Darowizna anulowana — Vespry',
     cancelHeading: 'Darowizna anulowana',
     cancelBody: 'Spokojnie, nic nie zostało pobrane. Możesz zamknąć to okno.',
+    back: 'Wróć do Vespry',
+    webSuccessBody: 'Twoje wsparcie trafia na ścianę Vespry. Dziękujemy, że pomagasz utrzymać go za darmo.',
+    webCancelBody: 'Spokojnie, nic nie zostało pobrane.',
   },
   nl: {
     successTitle: 'Bedankt — Vespry',
@@ -123,6 +163,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Donatie geannuleerd — Vespry',
     cancelHeading: 'Donatie geannuleerd',
     cancelBody: 'Geen zorgen, er is niets afgeschreven. Je kunt dit venster sluiten.',
+    back: 'Terug naar Vespry',
+    webSuccessBody: 'Je steun komt op de muur van Vespry. Bedankt dat je het gratis houdt.',
+    webCancelBody: 'Geen zorgen, er is niets afgeschreven.',
   },
   fi: {
     successTitle: 'Kiitos — Vespry',
@@ -131,6 +174,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'Lahjoitus peruttu — Vespry',
     cancelHeading: 'Lahjoitus peruttu',
     cancelBody: 'Ei hätää, mitään ei veloitettu. Voit sulkea tämän ikkunan.',
+    back: 'Takaisin Vespryyn',
+    webSuccessBody: 'Tukesi liittyy Vespryn seinälle. Kiitos, että pidät sen ilmaisena.',
+    webCancelBody: 'Ei hätää, mitään ei veloitettu.',
   },
   hi: {
     successTitle: 'धन्यवाद — Vespry',
@@ -139,6 +185,9 @@ const STRINGS: Record<Locale, PageStrings> = {
     cancelTitle: 'दान रद्द — Vespry',
     cancelHeading: 'दान रद्द',
     cancelBody: 'चिंता न करें, कोई शुल्क नहीं लिया गया। आप इस विंडो को बंद कर सकते हैं।',
+    back: 'Vespry पर वापस जाएँ',
+    webSuccessBody: 'आपका समर्थन Vespry की दीवार पर जुड़ गया है। इसे मुफ़्त बनाए रखने के लिए धन्यवाद।',
+    webCancelBody: 'चिंता न करें, कोई शुल्क नहीं लिया गया।',
   },
 };
 

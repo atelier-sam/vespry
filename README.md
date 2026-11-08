@@ -1,121 +1,97 @@
 <div align="center">
 
-<img src="src/assets/icon-128.png" alt="Logo Vespry" width="104" height="104" />
-
-# Vespry
-
-### L'export increvable de ton historique Discord
-
-*Un serveur que tu quittes, des messages à garder, une communauté qui ferme.*
-*Discord ne te laisse rien emporter. Vespry, si.*
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/hero-en-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/brand/hero-en-light.png">
+  <img src="docs/brand/hero-en-dark.png" alt="Vespry, the crash-proof Discord history exporter" width="100%">
+</picture>
 
 <br/>
 
-[![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-coming_soon-7b6cf0?logo=googlechrome&logoColor=white)](#-install)
+[![Microsoft Edge Add-ons](https://img.shields.io/badge/Edge_Add--ons-coming_soon-7b6cf0?logo=microsoftedge&logoColor=white)](#-install)
+[![Firefox Add-ons](https://img.shields.io/badge/Firefox_Add--ons-coming_soon-7b6cf0?logo=firefoxbrowser&logoColor=white)](#-install)
+<br/>
+[![Latest release](https://img.shields.io/github/package-json/v/atelier-sam/vespry?label=version&color=ec6a93)](https://github.com/atelier-sam/vespry/releases/latest)
 [![CI](https://github.com/atelier-sam/vespry/actions/workflows/ci.yml/badge.svg)](https://github.com/atelier-sam/vespry/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0-informational)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-success)](https://developer.chrome.com/docs/extensions/develop/migrate)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/tests-389%20passants-brightgreen)](src/engine)
-[![Crowdin](https://badges.crowdin.net/vespry/localized.svg)](https://crowdin.com/project/vespry)
 
-<br/>
-
-**Chrome · Edge · Brave · Opera · Arc · Firefox**
-
-[Installation](#-installation) ·
-[Fonctionnalités](#-fonctionnalités) ·
-[Vespry vs les autres](#-vespry-face-aux-autres-outils) ·
-[Confidentialité](#-confidentialité) ·
-[Contribuer](#-traductions)
+**[Install](#-install)** · **[Features](#-features)** · **[Discreet mode](#️-discreet-mode)** · **[Privacy](#-privacy)** · **[Support Vespry 💜](#-support-vespry)** · **[Français](README.fr.md)**
 
 </div>
 
 <br/>
 
-<div align="center">
-
-<!-- GALERIE — captures réelles. Tant que les fichiers ne sont pas
-     présents dans docs/screenshots/, GitHub affiche le texte alt. -->
-
-<img src="docs/screenshots/overlay.png" alt="Panneau Vespry ouvert par-dessus Discord" width="720" />
-
-<em>Le panneau Vespry s'ouvre par-dessus Discord, dans une interface que tu connais déjà.</em>
-
-</div>
+> [!TIP]
+> **Vespry is free and has no ads, no account, no tracking.** It is built and
+> maintained by one person. If it saves a server's worth of memories for you,
+> [**a coffee keeps it going**](https://vespry-donors.sam-muselet.workers.dev/donate) ☕
 
 <br/>
 
----
+## 🦉 Why Vespry
 
-## 🦉 Pourquoi Vespry
+A server you are leaving, a community about to shut down, years of messages you
+want to keep. Discord lets you take almost nothing with you. Most export
+extensions **break on large servers**: they load the whole history in one go,
+the tab runs out of memory, and you are left with nothing.
 
-La plupart des extensions d'export **cassent sur les gros serveurs**. Elles
-chargent tout l'historique d'un bloc, le navigateur dépasse le délai, l'onglet
-plante, et tu n'as rien.
+Vespry turns the problem around:
 
-Vespry prend le problème à l'envers :
+- **Every batch of messages is written to disk** (IndexedDB) as it arrives.
+- If the export stops (tab closed, crash, network loss), **it resumes from the
+  last saved point** instead of starting over.
+- Close the Discord tab and the export **pauses**, then picks up by itself the
+  next time Discord is open.
 
-- **Chaque centaine de messages est écrite sur le disque** (IndexedDB) au fur
-  et à mesure.
-- Si l'export s'interrompt (onglet fermé, plantage, coupure), **il reprend
-  depuis le dernier point enregistré** au lieu de tout recommencer.
-- Si tu fermes l'onglet Discord, l'export **se met en pause** et repart tout
-  seul à la prochaine ouverture de Discord.
-
-Le résultat est une **archive `.zip` locale**, lisible par un humain comme par
-un agent IA, que personne d'autre que toi ne voit passer.
+The result is a **local `.zip` archive**, readable by a person as well as by an
+AI agent, that nobody but you ever sees.
 
 <br/>
 
----
+## 🕵️ Discreet mode
 
-## 🕵️ Mode discret
+Since March 2026, Discord has been sanctioning accounts that export their
+history with third-party tools: forced logout, temporary restriction,
+suspension for repeat cases. Tools that query the API from their own context,
+fast and in parallel, leave an easy signature.
 
-Depuis mars 2026, Discord sanctionne des comptes qui exportent leur historique
-avec des outils tiers : déconnexion forcée, restriction temporaire, suspension
-en cas de récidive. Les outils qui interrogent l'API depuis leur propre
-contexte, vite et en parallèle, ont une signature facile à repérer.
+Vespry is built not to have one:
 
-Vespry est construit pour ne pas en avoir :
+- **Requests leave from your discord.com tab**, sent by the Discord client
+  itself: same headers, same cookies, same API version. No request to Discord
+  ever leaves the extension.
+- **Human pace by default**: one channel at a time, 1.5 to 3.5 s between reads,
+  a pause of about ten minutes every 40 to 50 minutes, a per-session request
+  cap. A Normal mode, twice as fast, sits behind a warning.
+- **Stops at the first signal**: verification, refusal, protection page or
+  "slow down", the export pauses and tells you why. No burst of retries.
+- **Fewer requests**: the message count is done once, in series, and reused at
+  launch.
 
-- **Les requêtes partent de ton onglet discord.com**, par le client Discord
-  lui-même : mêmes en-têtes, mêmes cookies, même version d'API. Aucune requête
-  vers Discord ne part de l'extension.
-- **Rythme humain par défaut** : un salon à la fois, 1,5 à 3,5 s entre deux
-  lectures, une pause d'une dizaine de minutes toutes les 40 à 50 min, un
-  plafond de requêtes par session. Un mode Normal, deux fois plus rapide, existe
-  derrière un avertissement.
-- **Arrêt au premier signal** : vérification, refus, page de protection ou
-  demande de ralentir, l'export se met en pause et dit pourquoi. Pas de
-  relance en rafale.
-- **Moins de requêtes** : le comptage préalable est fait une fois, en série, et
-  réutilisé au lancement.
-
-Ça réduit le risque, ça ne le supprime pas : aucun outil ne peut garantir que
-ton compte ne sera pas sanctionné. Vespry te le dit avant ton premier export.
+This lowers the risk, it does not remove it: no tool can promise your account
+won't be sanctioned. Vespry says so before your first export, in your language.
 
 <br/>
 
----
-
-## ✨ Fonctionnalités
+## ✨ Features
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🛡️ Increvable
-Reprise après interruption, écriture par lots sur disque, reprise
-automatique à la réouverture de Discord. Le cœur du projet, couvert par les
-tests.
+### 🛡️ Crash-proof
+Resumes after any interruption, writes to disk in batches, restarts on its own
+when Discord reopens. The core of the project, covered by tests.
 
 </td>
 <td width="50%" valign="top">
 
-### 🔒 100 % local
-Aucun serveur Vespry ne voit tes messages. Chiffrement AES-256 optionnel du
-zip, mot de passe effacé dès l'archive fabriquée.
+### 🔒 100% local
+No Vespry server ever sees your messages. Optional AES-256 encryption of the
+zip; the password is erased as soon as the archive is built.
 
 </td>
 </tr>
@@ -123,328 +99,292 @@ zip, mot de passe effacé dès l'archive fabriquée.
 <td width="50%" valign="top">
 
 ### 🤖 Agent-ready
-Sortie JSON structurée avec schéma (`$schema`, `typeName`, `localPath`) :
-prête à être donnée à un agent IA ou à ton second cerveau. Format complet :
+Structured JSON with a documented schema (`$schema`, `typeName`, `localPath`),
+ready to hand to an AI agent or your second brain. Full format:
 [docs/SCHEMA.md](docs/SCHEMA.md).
 
 </td>
 <td width="50%" valign="top">
 
-### 🗓️ Planifiable
-Backup incrémental récurrent d'un serveur, quotidien ou hebdomadaire, via
-`chrome.alarms`. Il part dès qu'un onglet Discord est ouvert et te notifie.
+### 🗓️ Scheduled backups
+Recurring incremental backup of a server, daily or weekly. It runs as soon as
+a Discord tab is open and notifies you.
 
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 
-### 🎨 Quatre formats
-JSON, HTML (façon Discord), CSV, TXT, plusieurs à la fois en une passe.
-Avatars, emojis, vidéos et audio rendus en local.
+### 🎨 Four formats
+JSON, HTML (Discord-style), CSV and TXT, several at once in a single pass.
+Avatars, emojis, videos and audio stored locally.
 
 </td>
 <td width="50%" valign="top">
 
-### 🌍 15 langues
-Interface traduite et ouverte aux contributions via Crowdin, sans toucher
-au code.
+### 🌍 15 languages
+English, French, German, Spanish, Italian, Portuguese, Dutch, Polish, Finnish,
+Turkish, Russian, Japanese, Korean, Chinese and Hindi.
 
 </td>
 </tr>
 </table>
 
-<br/>
-
 <details>
-<summary><strong>Voir le détail de chaque fonctionnalité</strong></summary>
+<summary><strong>Every feature in detail</strong></summary>
 
 <br/>
 
-**Interface façon Discord** — À gauche, tes serveurs et conversations privées ;
-au centre, l'aperçu des messages (markdown rendu, réponses citées, réactions,
-stickers, embeds, médias inline) ; à droite, les réglages. Thème sombre ou
-clair. Deux modes : **Simple** par défaut, **Avancé** sur un clic.
+**Discord-like interface**: your servers and direct messages on the left, a
+message preview in the middle (rendered markdown, quoted replies, reactions,
+stickers, embeds, inline media), settings on the right. Dark or light theme.
+**Simple** mode by default, **Advanced** one click away.
 
-**Multi-sélection de salons + plage de dates** — Coche autant de salons que tu
-veux et fixe une fenêtre temporelle ; la file traite chaque salon dans l'ordre.
+**Multi-channel selection + date range**: tick as many channels as you want and
+set a time window; the queue handles each channel in turn.
 
-**Sélection de messages un par un** — Coche les messages voulus dans l'aperçu ;
-ils s'ajoutent au panneau de droite. Combinable avec les filtres.
+**Pick messages one by one**: tick messages in the preview; they join the
+selection on the right. Works together with filters.
 
-**Filtres booléens, zones granulaires** — Période, auteur, mot-clé, mention,
-épinglés, avec image / vidéo / son / sticker / embed / lien. Les zones se
-combinent en **ET** ou **OU**, et chacune peut être **inversée** (NON).
+**Boolean filters**: period, author, keyword, mention, pinned, has image /
+video / sound / sticker / embed / link. Zones combine with **AND** or **OR**,
+and each can be **inverted** (NOT).
 
-**Export incrémental** — Un nouvel export ne récupère que les messages postés
-depuis la dernière fois. La date du dernier export est affichée.
+**Incremental export**: a new export only fetches messages posted since the
+last one. The date of the last export is shown.
 
-**Chiffrement AES-256** — Mot de passe jamais envoyé, gardé le temps de
-l'export (pour reprendre après une coupure) puis effacé dès l'archive
-fabriquée. Jauge de force. Avertissement clair : zip irrécupérable si oublié.
+**AES-256 encryption**: the password is never sent anywhere, kept only for the
+duration of the export (to resume after an interruption), then erased. Strength
+meter, and a clear warning: a forgotten password means an unrecoverable zip.
 
-**Templates de nom de fichier** — `{guildName}-{date}.zip`,
-`{datetime}-{guildName}.zip`, avec aperçu en direct.
+**File name templates**: `{guildName}-{date}.zip`, `{datetime}-{guildName}.zip`,
+with a live preview.
 
-**Découpage des gros salons** — 5 000 / 10 000 / 25 000 messages par fichier,
-plutôt qu'un seul fichier ingérable.
+**Large channel splitting**: 5,000 / 10,000 / 25,000 messages per file instead
+of one unmanageable file.
 
-**Suppression bulk** — Triple garde-fou : sélection requise, modal de
-confirmation, saisie du mot « SUPPRIMER ». Rappel du risque à chaque fois, un
-message toutes les 3 à 6 s en rythme Discret, arrêt au premier refus de
-Discord. Idempotente.
+**Bulk delete**: triple safeguard (selection required, confirmation dialog,
+typing the confirmation word in your language). One message every 3 to 6 s in
+Discreet pace, stops at Discord's first refusal. Idempotent.
 
-**File d'export increvable** — Avancement par tâche, console temps réel, badge
-de pourcentage sur l'icône. Reprise d'un export interrompu.
+**Export queue**: progress per task, live log, percentage badge on the toolbar
+icon. Interrupted exports resume.
 
-**Tutoriel interactif** — Au premier lancement, un tour guidé montre où cliquer.
-Rejouable depuis le popup.
-
-**Réinitialisation** — Un bouton purge toutes les données Vespry locales
-(historique, préférences, planning) en cas de besoin.
+**Guided tour** on first launch, replayable from the popup. **Reset** button
+that erases all local Vespry data.
 
 </details>
 
 <br/>
 
----
-
-## 📸 Galerie
-
-> **Captures réelles en cours d'intégration.** Elles sont prises sur un serveur
-> de démonstration dédié pour ne rien exposer d'un vrai serveur privé.
+## 📸 Screenshots
 
 <table>
 <tr>
-<td align="center" width="33%">
-<img src="docs/screenshots/overlay.png" alt="Sélection des salons et messages" width="100%" /><br/>
-<sub><b>Sélection</b> — serveurs, salons, messages</sub>
-</td>
-<td align="center" width="33%">
-<img src="docs/screenshots/settings.png" alt="Panneau de réglages avancés" width="100%" /><br/>
-<sub><b>Réglages</b> — formats, filtres, chiffrement</sub>
-</td>
-<td align="center" width="33%">
-<img src="docs/screenshots/queue.png" alt="File d'export en cours" width="100%" /><br/>
-<sub><b>File d'export</b> — progression temps réel</sub>
-</td>
+<td width="50%"><img src="docs/screenshots/en/overlay.png" alt="Vespry panel open over Discord, a channel preview in the middle"><br/><sub><b>Preview</b>: servers, channels, messages</sub></td>
+<td width="50%"><img src="docs/screenshots/en/advanced.png" alt="Advanced mode with author and keyword selection zones"><br/><sub><b>Advanced mode</b>: AND / OR / NOT zones, formats, media</sub></td>
 </tr>
 <tr>
-<td align="center" width="33%">
-<img src="docs/screenshots/export-html.png" alt="Rendu HTML d'un export" width="100%" /><br/>
-<sub><b>Export HTML</b> — rendu façon Discord</sub>
-</td>
-<td align="center" width="33%">
-<img src="docs/screenshots/schedule.png" alt="Planification d'un backup" width="100%" /><br/>
-<sub><b>Planification</b> — backup récurrent</sub>
-</td>
-<td align="center" width="33%">
-<img src="docs/screenshots/popup.png" alt="Popup de l'extension" width="100%" /><br/>
-<sub><b>Popup</b> — état de session, historique</sub>
-</td>
+<td width="50%"><img src="docs/screenshots/en/export-done.png" alt="Finished export with message, image, video and reaction counts"><br/><sub><b>Export queue</b>: live log and totals</sub></td>
+<td width="50%"><img src="docs/screenshots/en/html-export.png" alt="HTML export rendered like Discord"><br/><sub><b>HTML export</b>: a browsable archive, Discord-style</sub></td>
 </tr>
 </table>
 
+<sub>Screenshots use a demo server with made-up data: no real server is shown.</sub>
+
 <br/>
 
----
+## 📊 Vespry compared
 
-## 📊 Vespry face aux autres outils
-
-| | Vespry | DiscordChatExporter | Discrub | Extensions freemium |
+| | Vespry | DiscordChatExporter | Discrub | Freemium extensions |
 |---|:--:|:--:|:--:|:--:|
-| Type | extension | appli desktop | extension | extension |
-| **Reprise après interruption** | ✅ | ❌ | ❌ | ❌ |
-| **Requêtes émises par le client Discord** | ✅ | ❌ | ❌ | ? |
-| **Rythme humain + arrêt au premier refus** | ✅ | ❌ | partiel | ? |
-| **Export incrémental natif** | ✅ | partiel | ❌ | ⚠️ payant |
-| **Plusieurs formats en un export** | ✅ | ❌ | ❌ | ❌ |
-| Formats JSON / HTML / CSV / TXT | ✅ | ✅ | JSON/HTML/CSV | variable |
-| Découpage des gros salons | ✅ | ✅ | ✅ | ❌ |
-| Filtres booléens (ET / OU / NON) | ✅ | ✅ texte | partiel | ❌ |
-| Filtres `has:` (image, vidéo, sticker…) | ✅ | ✅ | ✅ | ❌ |
-| Serveurs, forums, threads, DMs, groupes | ✅ | ✅ | ✅ | partiel |
-| Réactions, embeds, stickers, réponses | ✅ | ✅ | ✅ | partiel |
-| Téléchargement des médias | ✅ | ✅ | ✅ | ✅ |
-| Aperçu avant export | ✅ | ❌ | ✅ | partiel |
-| **Planification (daily / weekly)** | ✅ | ❌ | ❌ | ❌ |
-| **Chiffrement zip AES-256** | ✅ | ❌ | ❌ | ❌ |
-| **Templates de nom de fichier** | ✅ | ❌ | ❌ | ❌ |
-| Suppression bulk de messages | ✅ | ❌ | ✅ | ❌ |
-| **Langues de l'interface** | **15** | limité | anglais | anglais |
-| Gratuit, sans quota | ✅ | ✅ | ✅ | ❌ |
+| Type | extension | desktop app | extension | extension |
+| **Resumes after interruption** | ✅ | ❌ | ❌ | ❌ |
+| **Requests sent by the Discord client** | ✅ | ❌ | ❌ | ? |
+| **Human pace + stop at first refusal** | ✅ | ❌ | partial | ? |
+| **Native incremental export** | ✅ | partial | ❌ | ⚠️ paid |
+| **Several formats in one export** | ✅ | ❌ | ❌ | ❌ |
+| JSON / HTML / CSV / TXT | ✅ | ✅ | JSON/HTML/CSV | varies |
+| Large channel splitting | ✅ | ✅ | ✅ | ❌ |
+| Boolean filters (AND / OR / NOT) | ✅ | ✅ text | partial | ❌ |
+| `has:` filters (image, video, sticker…) | ✅ | ✅ | ✅ | ❌ |
+| Servers, forums, threads, DMs, groups | ✅ | ✅ | ✅ | partial |
+| Reactions, embeds, stickers, replies | ✅ | ✅ | ✅ | partial |
+| Media download | ✅ | ✅ | ✅ | ✅ |
+| Preview before export | ✅ | ❌ | ✅ | partial |
+| **Scheduled backups (daily / weekly)** | ✅ | ❌ | ❌ | ❌ |
+| **AES-256 zip encryption** | ✅ | ❌ | ❌ | ❌ |
+| **File name templates** | ✅ | ❌ | ❌ | ❌ |
+| Bulk message delete | ✅ | ❌ | ✅ | ❌ |
+| **Interface languages** | **15** | limited | English | English |
+| Free, no quota | ✅ | ✅ | ✅ | ❌ |
 | Open source | ✅ MIT | ✅ MIT | ✅ MIT | ❌ |
-| **Tout local, aucun compte externe** | ✅ | ✅ | ✅ | ❌ |
-| Télémétrie | opt-in, OFF | aucune | ⚠️ | ❌ analytics |
-
-<div align="center"><sub>Vespry est le seul à reprendre un export interrompu sans installer d'application, à planifier des backups récurrents, à chiffrer le zip en AES-256, et le seul traduit en 15 langues.</sub></div>
+| **Fully local, no external account** | ✅ | ✅ | ✅ | ❌ |
+| Telemetry | opt-in, OFF | none | ⚠️ | ❌ analytics |
 
 <br/>
 
----
+## 🚀 Install
 
-## 🚀 Installation
+**From the stores** (recommended, automatic updates): Chrome Web Store,
+Microsoft Edge Add-ons and Firefox Add-ons listings are on their way. The
+badges at the top will link to them as soon as each store approves Vespry.
 
-> En attendant la publication sur les stores.
+**By hand, in the meantime**: download the latest
+[release](https://github.com/atelier-sam/vespry/releases/latest).
 
 <table>
 <tr>
 <td valign="top" width="50%">
 
-**Chrome · Brave · Opera · Arc · Edge**
+**Chrome · Edge · Brave · Opera · Arc**
 
-1. Récupère le dossier `dist/` (ou compile-le).
-2. `chrome://extensions` → **mode développeur**.
-3. **Charger l'extension non empaquetée** → `dist/`.
-4. Ouvre Discord, connecte-toi. Le bouton **Vespry** apparaît en haut à droite.
+1. Download `vespry-<version>.zip` and unzip it.
+2. Open `chrome://extensions` and turn on **Developer mode**.
+3. **Load unpacked** → pick the unzipped folder.
+4. Open Discord and sign in: the **Vespry** button appears at the top right.
 
 </td>
 <td valign="top" width="50%">
 
 **Firefox**
 
-1. `npm run build:firefox` → `dist-firefox/`.
-2. `about:debugging#/runtime/this-firefox`.
-3. **Charger un module temporaire** → `dist-firefox/manifest.json`.
-4. Ouvre Discord, connecte-toi.
+1. Download `vespry_discord_export-<version>.zip`.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. **Load Temporary Add-on** → pick the zip.
+4. Open Discord and sign in.
 
 </td>
 </tr>
 </table>
 
-<br/>
-
----
-
-## 📦 Le fichier exporté
-
-L'export est une archive `.zip` autonome :
-
-- les messages, dans les formats choisis, **un fichier par salon** ;
-- les **médias téléchargés**, rangés dans des dossiers ;
-- un `INDEX.md` qui récapitule le contenu ;
-- *(optionnel)* chiffrement **AES-256** si tu as fourni un mot de passe.
+A hand-installed Vespry tells you when a new release is out; a store install is
+updated by the store and makes no such check.
 
 <br/>
 
----
+## 💜 Support Vespry
 
-## 🔐 Confidentialité
+Vespry is free, open source and ad-free, and will stay that way. Donations pay
+for hosting and for the time spent keeping up with Discord's changes. Pick an
+amount: you land on a Stripe-secured page, no account needed.
 
-**Vespry tourne entièrement en local.** Tes conversations, les médias, les
-exports : tout vit dans la mémoire de ton navigateur puis dans le `.zip` que tu
-télécharges. Rien ne transite par un serveur Vespry.
+<p align="center">
+  <a href="https://vespry-donors.sam-muselet.workers.dev/donate?amount=3"><img src="docs/brand/donate-en-3.png" alt="Donate €3, a coffee" height="58"></a>
+  <a href="https://vespry-donors.sam-muselet.workers.dev/donate?amount=5"><img src="docs/brand/donate-en-5.png" alt="Donate €5, an owl" height="58"></a>
+  <a href="https://vespry-donors.sam-muselet.workers.dev/donate?amount=10"><img src="docs/brand/donate-en-10.png" alt="Donate €10, patron" height="58"></a>
+  <a href="https://vespry-donors.sam-muselet.workers.dev/donate"><img src="docs/brand/donate-en-custom.png" alt="Donate a custom amount" height="58"></a>
+</p>
 
-**Les seuls flux sortants, tous explicites :**
+You choose whether to appear on the **supporters wall** shown in the extension,
+with a name and a short message, or to stay anonymous. The very first supporter
+earns the "First Light" badge. Not in a position to give? A ⭐ on this repository
+or a word to a friend helps just as much.
 
-| Flux | Quand | Ce qui sort |
+<br/>
+
+## 📦 The exported file
+
+The export is a self-contained `.zip`:
+
+- messages in the formats you chose, **one file per channel**;
+- **downloaded media**, sorted into folders;
+- an `INDEX.md` that explains the content, and a machine-readable
+  `manifest.json`;
+- *(optional)* **AES-256** encryption when you set a password.
+
+Layout, file naming and every JSON field: [docs/SCHEMA.md](docs/SCHEMA.md).
+
+<br/>
+
+## 🔐 Privacy
+
+**Vespry runs entirely in your browser.** Your conversations, media and exports
+live in your browser storage, then in the `.zip` you download. Nothing goes
+through a Vespry server.
+
+**The only outgoing traffic, all of it explicit:**
+
+| Traffic | When | What leaves |
 |---|---|---|
-| **Discord API** | toujours | émis depuis ton onglet discord.com, par le client Discord |
-| **CDN Discord** | médias de l'export | téléchargement par lien signé, sans jeton |
-| **Stripe** | don uniquement | rien tant que tu ne donnes pas |
-| **Worker dons** | affichage du mur | lecture seule, soutiens publics |
-| **GitHub** | crédits et check de version | IP / User-Agent (requêtes anonymes) |
-| **Signalement schéma** | **opt-in, OFF** | uniquement les *noms* de nouveaux champs Discord |
-| **Signaler un problème** | si tu cliques | formulaire GitHub public, pré-rempli et **masqué** (noms de serveur et de salons, identifiants, liens, e-mails) ; rien ne part sans ton clic sur « Submit » |
+| **Discord API** | always | sent from your discord.com tab, by the Discord client |
+| **Discord CDN** | export media | download through signed links, no token |
+| **Stripe** | donation only | nothing unless you donate |
+| **Donation service** | supporters wall | read-only, public supporters |
+| **GitHub** | credits, version check (manual installs only) | IP / User-Agent (anonymous requests) |
+| **Format report** | **opt-in, OFF** | only the *names* of new Discord fields |
+| **Report a problem** | if you click | public GitHub form, pre-filled and **masked** (server and channel names, IDs, links, e-mails); nothing leaves until you click "Submit" |
 
-Aucune analytics, aucun pixel, aucun tracker. Détail complet dans
-[`PRIVACY.md`](PRIVACY.md) ([English](PRIVACY.en.md)).
+No analytics, no pixel, no tracker. Full details in
+[`PRIVACY.en.md`](PRIVACY.en.md) ([français](PRIVACY.md)).
 
 <br/>
 
----
-
-## 🌍 Traductions
-
-[![Crowdin](https://badges.crowdin.net/vespry/localized.svg)](https://crowdin.com/project/vespry)
-
-Vespry est traduit en **15 langues** :
+## 🌍 Translations
 
 🇬🇧 English · 🇫🇷 Français · 🇩🇪 Deutsch · 🇪🇸 Español · 🇮🇹 Italiano ·
 🇵🇹 Português · 🇳🇱 Nederlands · 🇵🇱 Polski · 🇫🇮 Suomi · 🇹🇷 Türkçe ·
 🇷🇺 Русский · 🇯🇵 日本語 · 🇰🇷 한국어 · 🇨🇳 中文 · 🇮🇳 हिन्दी
 
-Contributions ouvertes sur [Crowdin](https://crowdin.com/project/vespry) :
-édition dans le navigateur, mémoire de traduction, sans toucher au code. Les
-chaînes validées arrivent automatiquement en PR.
+Spotted a clumsy sentence, or want a new language? Strings live in
+[`src/locales/`](src/locales), one JSON file per language: open an
+[issue](https://github.com/atelier-sam/vespry/issues) or a pull request.
 
 <br/>
 
----
-
-## 🛠️ Développement
+## 🛠️ Development
 
 ```bash
 npm install
-npm run dev              # build watch + HMR Chrome
-npm run build            # build Chrome production -> dist/
-npm run build:firefox    # build Firefox production -> dist-firefox/
-npm run test             # tests unitaires (vitest) — 389 tests
-npm run typecheck        # vérification de types
-npm run firefox:lint     # web-ext lint pour AMO
+npm run dev              # watch build + HMR (Chrome)
+npm run build            # Chrome production build -> dist/
+npm run build:firefox    # Firefox production build -> dist-firefox/
+npm run test             # unit tests (vitest)
+npm run typecheck        # type checking
+npm run firefox:lint     # web-ext lint for AMO
 ```
 
-TypeScript strict, Manifest V3, Vite, Preact. Le moteur d'export est couvert
-par **389 tests unitaires** : reprise d'un export interrompu, streaming
-AES-256, suppression idempotente.
+TypeScript strict, Manifest V3, Vite, Preact. The export engine is covered by
+unit tests: resuming an interrupted export, streaming AES-256, idempotent
+deletion, and a guard that forbids any Discord API call outside the tab.
+Architecture notes: [`CLAUDE.md`](CLAUDE.md).
 
 <br/>
-
----
-
-## 💜 Soutenir le projet
-
-Gratuit et open source, sans publicité. Si l'outil t'a rendu service :
-
-- Bouton **Soutenir Vespry** dans l'extension (en bas du panneau, ou onglet
-  Soutiens) — don ponctuel par Stripe Checkout, du montant de ton choix. Tu
-  choisis d'apparaître avec un prénom et un mot, ou de rester anonyme.
-
-Les soutiens publics apparaissent sur le **mur des soutiens** de l'extension.
-
-<br/>
-
----
 
 ## 💬 Contact
 
-- 💡 **Proposer une idée** : [Discussions GitHub](https://github.com/atelier-sam/vespry/discussions/new?category=ideas)
-- 🐛 **Signaler un bug** : [Issues GitHub](https://github.com/atelier-sam/vespry/issues)
-- ✉️ **Privé** : profil [@atelier-sam](https://github.com/atelier-sam)
+- 💡 **Suggest an idea**: [GitHub Discussions](https://github.com/atelier-sam/vespry/discussions/new?category=ideas)
+- 🐛 **Report a bug**: [GitHub Issues](https://github.com/atelier-sam/vespry/issues), or "Report a problem" in the extension
+- 🔒 **Security issue**: [private report](https://github.com/atelier-sam/vespry/security/advisories/new), see [SECURITY.md](SECURITY.md)
 
 <br/>
 
----
+## ⚠️ Disclaimer
 
-## ⚠️ Avertissement
+Automating a Discord user account goes against Discord's terms of service, and
+Discord has been sanctioning accounts that export their history since March
+2026. [Discreet mode](#️-discreet-mode) lowers that risk without removing it.
+This tool is provided as is; use it on your own data, at your own risk. Before
+your first export, Vespry shows this warning in your language and asks you to
+accept it. Discord's official export (Settings → Data & Privacy → Request all
+of my data) remains the risk-free way.
 
-Automatiser un compte utilisateur Discord est contraire aux conditions
-d'utilisation de Discord, et Discord sanctionne des comptes qui exportent leur
-historique depuis mars 2026. Le [mode discret](#️-mode-discret) réduit ce
-risque sans le supprimer. Cet outil est fourni tel quel ; utilise-le sur tes
-propres données, à tes risques. Au premier export, Vespry affiche cet
-avertissement dans ta langue et tu dois le valider.
-
-Vespry n'est pas affilié à Discord Inc. « Discord » et son logo sont des
-marques de Discord Inc.
+Vespry is not affiliated with Discord Inc. "Discord" and its logo are
+trademarks of Discord Inc.
 
 <br/>
 
----
+## 📄 License
 
-## 📄 Licence
-
-[![Licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
-
-Le client API Discord (`src/engine/discord-api.ts`) dérive de Discrub Classic
-(MIT). « Discrub » est une marque de prathercc, non utilisée ici.
+[MIT](LICENSE). The Discord API client (`src/engine/discord-api.ts`) derives from
+Discrub Classic (MIT). "Discrub" is a trademark of prathercc, not used here.
 
 <div align="center">
 
 <br/>
 
-**© 2026 Samuel Muselet — [L'Atelier de Sam](https://atelier-sam.fr)**
+**© 2026 Samuel Muselet · [L'Atelier de Sam](https://atelier-sam.fr)**
 
-*fait avec passion 🦉*
+<sub>made with passion 🦉</sub>
 
 </div>

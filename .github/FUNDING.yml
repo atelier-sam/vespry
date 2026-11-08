@@ -1,0 +1,3 @@
+# Bouton « Sponsor » du dépôt GitHub : mène à la page de dons publique
+# (Stripe Checkout, servie par donor-service). Stripe est le seul canal ouvert.
+custom: ["https://vespry-donors.sam-muselet.workers.dev/donate"]

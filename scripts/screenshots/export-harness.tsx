@@ -6,18 +6,16 @@
  * pixel à ce qu'un utilisateur obtient dans son archive, sans donnée privée.
  * Playwright (`capture.mjs`) ouvre cette page et capture html-export.png.
  */
-import { toHtml, type ExportContext, type ExportLabels } from '../../src/engine/exporters';
+import { toHtml, type ExportContext } from '../../src/engine/exporters';
+import { buildLabels } from '../../src/engine/packager';
 import type { RawMessage, RawUser } from '../../src/engine/types';
 
-const LABELS_FR: ExportLabels = {
-  messages: 'messages', edited: 'modifié', replyTo: 'en réponse à',
-  attachment: 'pièce jointe', sticker: 'sticker', embed: 'embed',
-  reactions: 'réactions', systemLabel: 'système',
-  systemMessage: (type) => `message système (type ${type})`,
-  exportedBy: 'exporté avec Vespry', poll: 'sondage',
-  pollVotes: (n) => `${n} votes`,
-  mentions: { user: '@membre', role: '@rôle', channel: '#salon' },
-};
+// Libellés réels de l'extension, dans la langue du navigateur (capture.mjs
+// lance la page en fr-FR ou en-US) : le rendu est celui de l'archive.
+const FR = (navigator.language || 'en').toLowerCase().startsWith('fr');
+const tr = (fr: string, en: string): string => (FR ? fr : en);
+/** Identifiant de salon fictif (série des tests, cf. src/no-real-ids.test.ts). */
+const CHANNEL_ID = '1100000000000000002';
 
 function user(id: string, name: string, bot = false): RawUser {
   return { id, username: name, global_name: name, discriminator: '0', avatar: null, bot };
@@ -28,33 +26,37 @@ const TANUKI = user('3', 'Tanuki', true);
 
 const T = '2026-05-20T';
 function msg(o: Partial<RawMessage> & { id: string; author: RawUser; content: string; timestamp: string }): RawMessage {
-  return { type: 0, channel_id: '1505933366229340160', attachments: [], embeds: [], ...o };
+  return { type: 0, channel_id: CHANNEL_ID, attachments: [], embeds: [], ...o };
 }
 const messages: RawMessage[] = [
   msg({ id: '10', author: SORA, timestamp: `${T}09:02:00Z`,
-    content: "Salut l'équipe 👋 On lance la **sauvegarde du serveur** avant la migration. Quelqu'un a déjà testé `Vespry` pour l'export ?" }),
+    content: tr("Salut l'équipe 👋 On lance la **sauvegarde du serveur** avant la migration. Quelqu'un a déjà testé `Vespry` pour l'export ?",
+      "Hey team 👋 We're starting the **server backup** before the migration. Has anyone tried `Vespry` for the export?") }),
   msg({ id: '11', author: KITSUNE, timestamp: `${T}09:03:12Z`,
-    content: "Oui ! Export increvable, ça reprend tout seul si l'onglet plante. J'ai exporté 40 000 messages hier sans souci 🚀",
+    content: tr("Oui ! Export increvable, ça reprend tout seul si l'onglet plante. J'ai exporté 40 000 messages hier sans souci 🚀",
+      "Yes! Crash-proof export, it picks up on its own if the tab dies. I exported 40,000 messages yesterday, no trouble 🚀"),
     reactions: [{ count: 3, emoji: { id: null, name: '🔥' } }, { count: 2, emoji: { id: null, name: '👍' } }] }),
   msg({ id: '12', author: TANUKI, timestamp: `${T}09:04:30Z`,
-    content: "Et le JSON est *propre*, parfait pour le donner à un agent. La structure :\n```json\n{ \"guild\": \"…\", \"channel\": { \"type\": 0 }, \"messages\": [ … ] }\n```",
-    referenced_message: msg({ id: '11', author: KITSUNE, timestamp: `${T}09:03:12Z`, content: "Export increvable, ça reprend tout seul…" }),
-    message_reference: { message_id: '11', channel_id: '1505933366229340160' } }),
+    content: tr("Et le JSON est *propre*, parfait pour le donner à un agent. La structure :", "And the JSON is *clean*, perfect to hand to an agent. The structure:") + "\n```json\n{ \"guild\": \"…\", \"channel\": { \"type\": 0 }, \"messages\": [ … ] }\n```",
+    referenced_message: msg({ id: '11', author: KITSUNE, timestamp: `${T}09:03:12Z`, content: tr("Export increvable, ça reprend tout seul…", "Crash-proof export, it picks up on its own…") }),
+    message_reference: { message_id: '11', channel_id: CHANNEL_ID } }),
   msg({ id: '13', author: SORA, timestamp: `${T}09:06:00Z`,
-    content: "Top. Je programme un **backup hebdomadaire** alors, comme ça on a toujours une copie fraîche. Chiffré en AES-256 🔒",
+    content: tr("Top. Je programme un **backup hebdomadaire** alors, comme ça on a toujours une copie fraîche. Chiffré en AES-256 🔒",
+      "Nice. I'll schedule a **weekly backup** then, so we always have a fresh copy. Encrypted with AES-256 🔒"),
     embeds: [{
       title: 'Vespry — Export Discord',
-      description: 'Crash-proof · agent-ready · 100 % local',
+      description: tr('Increvable · agent-ready · 100 % local', 'Crash-proof · agent-ready · 100% local'),
       url: 'https://github.com/atelier-sam/vespry',
       color: 0x6c5ce0,
       fields: [
         { name: 'Formats', value: 'JSON · HTML · CSV · TXT', inline: true },
-        { name: 'Langues', value: '15', inline: true },
+        { name: tr('Langues', 'Languages'), value: '15', inline: true },
       ],
     }],
   }),
   msg({ id: '14', author: KITSUNE, timestamp: `${T}09:07:45Z`,
-    content: "Parfait 🦊 Et le rendu HTML est lisible direct, façon Discord. On garde une vraie archive consultable.",
+    content: tr("Parfait 🦊 Et le rendu HTML est lisible direct, façon Discord. On garde une vraie archive consultable.",
+      "Perfect 🦊 And the HTML output reads right away, Discord-style. We keep an archive we can actually browse."),
     reactions: [{ count: 4, emoji: { id: null, name: '💜' } }] }),
 ];
 
@@ -62,9 +64,9 @@ const ctx: ExportContext = {
   guildName: 'Studio Kitsune',
   guildId: '0',
   channelName: 'vespry',
-  channel: { id: '1505933366229340160', name: 'vespry', type: 0 },
+  channel: { id: CHANNEL_ID, name: 'vespry', type: 0 },
   urlToPath: new Map(),
-  labels: LABELS_FR,
+  labels: buildLabels(),
 };
 
 // `toHtml` renvoie un document HTML complet et autonome (CSS inline). On

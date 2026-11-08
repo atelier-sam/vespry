@@ -86,7 +86,8 @@ URL de la politique de confidentialité : `https://github.com/atelier-sam/vespry
 ## Captures écran
 
 Cinq captures minimum, **1280 × 800** (recommandé) ou 640 × 400. Reprendre
-celles de `docs/screenshots/` :
+celles de `docs/screenshots/en/` (fiche par défaut, anglais) ; la fiche
+française peut utiliser `docs/screenshots/fr/` :
 
 1. `overlay.png` — l'overlay sur Discord.
 2. `advanced.png` — mode Avancé, filtres, ET / OU.

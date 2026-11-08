@@ -62,13 +62,20 @@ moteur `toHtml` avec des données synthétiques (cast Sora / Kitsune / Tanuki),
 capturés en 2× puis rééchantillonnés en 1280×800 exact.
 
 ```sh
-node scripts/screenshots/capture.mjs   # overlay, advanced, multi-select, export-done, html-export
-node scripts/screenshots/gen-logo.mjs  # logo-300 (tuile Edge)
+VESPRY_VERSION=1.1.0 node scripts/screenshots/capture.mjs en-US   # -> docs/screenshots/en/
+VESPRY_VERSION=1.1.0 node scripts/screenshots/capture.mjs fr-FR   # -> docs/screenshots/fr/
+node scripts/screenshots/gen-logo.mjs                             # logo-300 (tuile Edge)
 ```
 
-Disponibles dans `docs/screenshots/` : `overlay.png`, `advanced.png`,
-`multi-select.png`, `export-done.png`, `html-export.png`, `popup.png`,
-`logo-300.png` (Edge 300×300).
+Sur un Mac en français, la capture anglaise montre les champs de date en
+jj/mm/aaaa : passer le Chromium de test en anglais le temps de la capture
+(commande en tête de `capture.mjs`). `PLAYWRIGHT_CHROME=<chemin>` force le
+binaire si celui de Playwright manque.
+
+Dans `docs/screenshots/en/` et `fr/` : `overlay.png`, `advanced.png`,
+`multi-select.png`, `export-done.png`, `html-export.png` (la démo et
+l'interface suivent la langue ; mur des soutiens vide, comme en vrai).
+`docs/screenshots/logo-300.png` : tuile Edge 300×300.
 
 ## 5. Mise en ligne — actions de Sam (externes)
 

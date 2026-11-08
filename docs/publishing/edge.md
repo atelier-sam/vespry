@@ -132,9 +132,8 @@ Avant chaque soumission, vérifier :
      Sam veut une mise en avant. Sans, Edge affichera le logo recadré.
    - **Large promotional tile** (optionnel, 1400×560) : idem.
    - **Screenshots** (jusqu'à 6, 640×480 ou 1280×800) : utiliser
-     `docs/screenshots/*.png`. Les sept screenshots du repo sont en
-     1280×800 ou proches — vérifier les dimensions avant l'upload, et
-     redimensionner si besoin. Suggérer dans cet ordre :
+     `docs/screenshots/en/*.png` (anglais ; `fr/` pour la fiche
+     française), toutes en 1280×800 exact. Suggérer dans cet ordre :
      1. `overlay.png` — l'overlay sur Discord (vue principale).
      2. `multi-select.png` — sélection multi-salons.
      3. `advanced.png` — mode avancé.

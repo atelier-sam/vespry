@@ -46,8 +46,11 @@ import { encryptZipBlob } from './encrypt-zip';
 import { t } from '../ui/i18n';
 import type { RawMessage } from './types';
 
-/** Construit le jeu de libellés traduits injectés dans les fichiers exportés. */
-function buildLabels(): ExportLabels {
+/**
+ * Construit le jeu de libellés traduits injectés dans les fichiers exportés.
+ * Exporté pour le harnais de captures (rendu fidèle dans chaque langue).
+ */
+export function buildLabels(): ExportLabels {
   return {
     messages: t('exp.messages'),
     edited: t('exp.edited'),

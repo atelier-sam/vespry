@@ -21,6 +21,13 @@ import { ChannelType } from '../../src/engine/types';
 import type { QueueItemView } from '../../src/messaging';
 import type { DonorFeed } from '../../src/donors';
 
+/* ── Langue de la démo ────────────────────────────────────────────────
+ * Les captures existent en français et en anglais (capture.mjs <locale>) :
+ * la conversation de démo suit la langue de l'interface, sinon une capture
+ * anglaise montrerait des messages en français. */
+const FR = (navigator.language || 'en').toLowerCase().startsWith('fr');
+const tr = (fr: string, en: string): string => (FR ? fr : en);
+
 /* ── Cast synthétique ─────────────────────────────────────────────────── */
 
 function user(id: string, name: string, bot = false): RawUser {
@@ -54,12 +61,12 @@ function chan(
 
 const CHANNELS_BY_GUILD: Record<string, RawChannel[]> = {
   '200000000000000001': [
-    chan('300000000000000000', 'annonces', 0, ChannelType.GUILD_ANNOUNCEMENT),
+    chan('300000000000000000', tr('annonces', 'announcements'), 0, ChannelType.GUILD_ANNOUNCEMENT),
     chan('310000000000000000', 'AGENTS', 1, ChannelType.GUILD_CATEGORY),
     chan('300000000000000001', 'vespry', 2, ChannelType.GUILD_TEXT, '310000000000000000'),
-    chan('300000000000000002', 'général', 3, ChannelType.GUILD_TEXT, '310000000000000000'),
+    chan('300000000000000002', tr('général', 'general'), 3, ChannelType.GUILD_TEXT, '310000000000000000'),
     chan('300000000000000003', 'sora-logs', 4, ChannelType.GUILD_TEXT, '310000000000000000'),
-    chan('320000000000000000', 'PROJETS', 5, ChannelType.GUILD_CATEGORY),
+    chan('320000000000000000', tr('PROJETS', 'PROJECTS'), 5, ChannelType.GUILD_CATEGORY),
     chan('300000000000000004', 'roadmap', 6, ChannelType.GUILD_TEXT, '320000000000000000'),
     chan('300000000000000005', 'design', 7, ChannelType.GUILD_TEXT, '320000000000000000'),
     chan('300000000000000006', 'releases', 8, ChannelType.GUILD_TEXT, '320000000000000000'),
@@ -77,40 +84,35 @@ function msg(o: Partial<RawMessage> & { id: string; author: RawUser; content: st
 }
 const PREVIEW: RawMessage[] = [
   msg({ id: '400000000000000010', author: SORA, timestamp: `${T}09:02:00Z`,
-    content: "Salut l'équipe 👋 On lance la **sauvegarde du serveur** avant la migration. Quelqu'un a déjà testé `Vespry` ?" }),
+    content: tr("Salut l'équipe 👋 On lance la **sauvegarde du serveur** avant la migration. Quelqu'un a déjà testé `Vespry` ?",
+      "Hey team 👋 We're starting the **server backup** before the migration. Has anyone tried `Vespry`?") }),
   msg({ id: '400000000000000011', author: KITSUNE, timestamp: `${T}09:03:12Z`,
-    content: "Oui ! Export increvable, ça reprend tout seul si l'onglet plante. J'ai sorti 40 000 messages hier sans souci 🚀",
+    content: tr("Oui ! Export increvable, ça reprend tout seul si l'onglet plante. J'ai sorti 40 000 messages hier sans souci 🚀",
+      "Yes! Crash-proof export, it picks up on its own if the tab dies. I pulled 40,000 messages yesterday, no trouble 🚀"),
     reactions: [{ count: 4, emoji: { id: null, name: '🔥' } }, { count: 2, emoji: { id: null, name: '👍' } }] }),
   msg({ id: '400000000000000012', author: TANUKI, timestamp: `${T}09:04:30Z`,
-    content: "Et le JSON est *propre*, parfait pour le donner à un agent. La structure :\n```json\n{ \"guild\": \"…\", \"channel\": { \"type\": 0 }, \"messages\": [ … ] }\n```",
+    content: tr("Et le JSON est *propre*, parfait pour le donner à un agent. La structure :", "And the JSON is *clean*, perfect to hand to an agent. The structure:") + "\n```json\n{ \"guild\": \"…\", \"channel\": { \"type\": 0 }, \"messages\": [ … ] }\n```",
     message_reference: { message_id: '400000000000000011', channel_id: '300000000000000001' },
-    referenced_message: msg({ id: '400000000000000011', author: KITSUNE, timestamp: `${T}09:03:12Z`, content: "Export increvable, ça reprend tout seul…" }) }),
+    referenced_message: msg({ id: '400000000000000011', author: KITSUNE, timestamp: `${T}09:03:12Z`, content: tr("Export increvable, ça reprend tout seul…", "Crash-proof export, it picks up on its own…") }) }),
   msg({ id: '400000000000000013', author: SORA, timestamp: `${T}09:06:10Z`,
-    content: "Parfait. On garde aussi les **images** et les **vocaux** ? L'archive doit rester lisible hors-ligne.",
+    content: tr("Parfait. On garde aussi les **images** et les **vocaux** ? L'archive doit rester lisible hors-ligne.",
+      "Great. Do we keep the **images** and **voice notes** too? The archive has to stay readable offline."),
     reactions: [{ count: 3, emoji: { id: null, name: '✅' } }] }),
   msg({ id: '400000000000000014', author: KITSUNE, timestamp: `${T}09:07:45Z`,
-    content: "Oui, médias inline + emojis custom. Et on chiffre le zip (AES-256) avant de l'envoyer à l'archive. 🔒" }),
+    content: tr("Oui, médias inline + emojis custom. Et on chiffre le zip (AES-256) avant de l'envoyer à l'archive. 🔒",
+      "Yes, inline media + custom emojis. And we encrypt the zip (AES-256) before it goes to the archive. 🔒") }),
   msg({ id: '400000000000000015', author: TANUKI, timestamp: `${T}09:09:20Z`,
-    content: "Top. Je programme un **backup hebdo** du serveur, comme ça on n'y pense plus. Vespry gère la planification.",
+    content: tr("Top. Je programme un **backup hebdo** du serveur, comme ça on n'y pense plus. Vespry gère la planification.",
+      "Nice. I'm scheduling a **weekly backup** of the server so nobody has to think about it. Vespry handles the schedule."),
     reactions: [{ count: 5, emoji: { id: null, name: '🦊' } }, { count: 2, emoji: { id: null, name: '🙌' } }] }),
 ];
 
-/* ── Mur des soutiens (synthétique, pour animer le footer) ────────────── */
+/* ── Mur des soutiens ─────────────────────────────────────────────────
+ * VIDE, comme en vrai à ce jour : ces captures vont sur les stores et le
+ * README, un mur peuplé de noms inventés y serait trompeur. Le footer montre
+ * alors l'invitation « Sois le tout premier… ». */
 
-const DAY = 86_400_000;
-const NOW = Date.parse('2026-06-07T12:00:00Z');
-const DONORS: DonorFeed = {
-  total: 14,
-  weekCount: 3,
-  nextMilestone: { key: 'm.twentyfive', seq: 25, remaining: 11 },
-  recent: [
-    { seq: 14, source: 'stripe', name: 'Camille', message: 'Merci, ça m\'a sauvé une archive entière !', createdAt: NOW - 1 * DAY, milestone: null },
-    { seq: 13, source: 'github', name: 'Léa', message: null, createdAt: NOW - 2 * DAY, milestone: null },
-    { seq: 12, source: 'kofi', name: 'Dywan', message: 'Pépite open source 💜', createdAt: NOW - 3 * DAY, milestone: null },
-    { seq: 10, source: 'stripe', name: 'Marin', message: null, createdAt: NOW - 6 * DAY, milestone: 'm.ten' },
-    { seq: 9, source: 'github', name: null, message: null, createdAt: NOW - 9 * DAY, milestone: null },
-  ],
-};
+const DONORS: DonorFeed = { total: 0, weekCount: 0, nextMilestone: null, recent: [] };
 
 /* ── File d'export : un run TERMINÉ (pour export-done) ────────────────── */
 
@@ -130,10 +132,10 @@ const QUEUE: QueueItemView[] = [
       '09:10:02  → #vespry…',
       '09:10:04  #vespry · +100 msg',
       '09:10:09  #vespry · ↓ 12 image(s)',
-      '09:10:21  ✓ #vespry — 1 204 msg',
-      '09:11:33  → #général…',
-      '09:13:50  ✓ #général — 6 902 msg',
-      '09:15:12  ✓ #roadmap — 4 374 msg',
+      `09:10:21  ✓ #vespry — ${tr('1 204', '1,204')} msg`,
+      `09:11:33  → #${tr('général', 'general')}…`,
+      `09:13:50  ✓ #${tr('général', 'general')} — ${tr('6 902', '6,902')} msg`,
+      `09:15:12  ✓ #roadmap — ${tr('4 374', '4,374')} msg`,
       '09:15:40  📦 Paquet prêt — 184.6 Mo',
     ],
     zipReady: true,

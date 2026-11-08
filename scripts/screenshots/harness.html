@@ -24,7 +24,9 @@
           runtime: {
             id: 'vespry-harness',
             getManifest: function () {
-              return { version: '1.0.0', name: 'Vespry — Discord Export' };
+              // Version passée par capture.mjs (?v=), jamais figée ici.
+              var v = new URLSearchParams(location.search).get('v') || '0.0.0';
+              return { version: v, name: 'Vespry — Discord Export' };
             },
             getURL: function (p) { return p; },
             sendMessage: function () { return Promise.resolve({}); },

@@ -3,9 +3,10 @@ MIT License
 Copyright (c) 2026 Samuel Muselet (L'Atelier de Sam) and Vespry contributors
 
 Portions of this software (the Discord API client in src/engine/discord-api.ts)
-are derived from Discrub Classic (https://github.com/prathercc/discrub-ext),
-Copyright (c) prathercc, also under the MIT License. "Discrub" is a trademark of
-prathercc and is not used by this project.
+are derived from Discrub Classic (https://github.com/pratherbytecraft/discrub-ext,
+formerly prathercc/discrub-ext), Copyright (c) 2021-2026 Prather Bytecraft
+(formerly prathercc), also under the MIT License. "Discrub" is a trademark of
+Prather Bytecraft; this project is not affiliated with it.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

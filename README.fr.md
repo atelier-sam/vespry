@@ -33,37 +33,41 @@
 
 ## 🦉 Pourquoi Vespry
 
-Un serveur que tu quittes, une communauté qui ferme, des années de messages à
-garder. Discord ne te laisse presque rien emporter. La plupart des extensions
-d'export **cassent sur les gros serveurs** : elles chargent tout l'historique
-d'un bloc, l'onglet manque de mémoire, et tu n'as rien.
+L'export officiel de Discord ne contient que les messages que tu as écrits
+toi-même : pas le reste de la conversation, et les pièces jointes seulement
+sous forme de liens. Pour garder un salon ou un serveur entier, il faut un
+outil tiers, et sur un gros serveur l'export peut durer des heures. Un onglet
+fermé, un plantage ou une coupure réseau ne devraient pas te renvoyer à zéro.
 
-Vespry prend le problème à l'envers :
+Vespry enregistre au fur et à mesure :
 
-- **Chaque lot de messages est écrit sur le disque** (IndexedDB) au fur et à
-  mesure.
-- Si l'export s'interrompt (onglet fermé, plantage, coupure), **il reprend
-  depuis le dernier point enregistré** au lieu de tout recommencer.
-- Si tu fermes l'onglet Discord, l'export **se met en pause** et repart tout
-  seul à la prochaine ouverture de Discord.
+- Chaque lot de messages est écrit sur le disque (IndexedDB) dès qu'il arrive.
+- Si l'export s'interrompt (onglet fermé, plantage, coupure), il reprend
+  depuis le dernier point enregistré au lieu de tout recommencer.
+- Si tu fermes l'onglet Discord, l'export se met en pause et repart tout seul
+  à la prochaine ouverture de Discord.
 
-Le résultat est une **archive `.zip` locale**, lisible par un humain comme par
-un agent IA, que personne d'autre que toi ne voit passer.
+Le résultat est une archive `.zip` locale, lisible par un humain comme par un
+agent IA, qui reste sur ton ordinateur.
 
 <br/>
 
 ## 🕵️ Mode discret
 
-Depuis mars 2026, Discord sanctionne des comptes qui exportent leur historique
-avec des outils tiers : déconnexion forcée, restriction temporaire, suspension
-en cas de récidive. Les outils qui interrogent l'API depuis leur propre
-contexte, vite et en parallèle, ont une signature facile à repérer.
+Depuis mars 2026, des utilisateurs d'outils d'export rapportent des sanctions
+sur leur compte après avoir exporté leur historique : déconnexion forcée,
+restriction temporaire, parfois suspension
+([DiscordChatExporter #1497](https://github.com/Tyrrrz/DiscordChatExporter/issues/1497), [Discrub #14](https://github.com/pratherbytecraft/discrub/issues/14)). Discord n'a
+rien publié sur les outils d'export en particulier, mais ses règles
+interdisent d'automatiser un compte utilisateur. Un signal probable : des
+requêtes qui ne ressemblent pas à celles du client Discord (sans ses en-têtes
+ni ses cookies), envoyées vite et en parallèle.
 
-Vespry est construit pour ne pas en avoir :
+Ce que fait Vespry à la place :
 
-- **Les requêtes partent de ton onglet discord.com**, par le client Discord
-  lui-même : mêmes en-têtes, mêmes cookies, même version d'API. Aucune requête
-  vers Discord ne part de l'extension.
+- **Les requêtes partent de ton onglet discord.com**, avec les en-têtes et les
+  cookies du client Discord. L'extension n'appelle jamais l'API Discord
+  elle-même.
 - **Rythme humain par défaut** : un salon à la fois, 1,5 à 3,5 s entre deux
   lectures, une pause d'une dizaine de minutes toutes les 40 à 50 min, un
   plafond de requêtes par session. Un mode Normal, deux fois plus rapide, existe
@@ -88,8 +92,8 @@ dans ta langue.
 
 ### 🛡️ Increvable
 Reprise après interruption, écriture par lots sur disque, reprise
-automatique à la réouverture de Discord. Le cœur du projet, couvert par les
-tests.
+automatique à la réouverture de Discord. C'est le cœur du projet, et il est
+couvert par les tests.
 
 </td>
 <td width="50%" valign="top">
@@ -105,7 +109,7 @@ zip, mot de passe effacé dès l'archive fabriquée.
 
 ### 🤖 Agent-ready
 Sortie JSON structurée avec schéma documenté (`$schema`, `typeName`,
-`localPath`) : prête à être donnée à un agent IA ou à ton second cerveau.
+`localPath`) : prête à être donnée à un agent IA ou à une appli de notes.
 Format complet : [docs/SCHEMA.md](docs/SCHEMA.md).
 
 </td>
@@ -201,31 +205,36 @@ pourcentage sur l'icône. Un export interrompu reprend.
 
 ## 📊 Vespry face aux autres outils
 
-| | Vespry | DiscordChatExporter | Discrub | Extensions freemium |
+| | Vespry | [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) | [Discrub](https://github.com/pratherbytecraft/discrub) | [Discord History Tracker](https://github.com/chylex/Discord-History-Tracker) |
 |---|:--:|:--:|:--:|:--:|
-| Type | extension | appli desktop | extension | extension |
-| **Reprise après interruption** | ✅ | ❌ | ❌ | ❌ |
-| **Requêtes émises par le client Discord** | ✅ | ❌ | ❌ | ? |
-| **Rythme humain + arrêt au premier refus** | ✅ | ❌ | partiel | ? |
-| **Export incrémental natif** | ✅ | partiel | ❌ | ⚠️ payant |
-| **Plusieurs formats en un export** | ✅ | ❌ | ❌ | ❌ |
-| Formats JSON / HTML / CSV / TXT | ✅ | ✅ | JSON/HTML/CSV | variable |
-| Découpage des gros salons | ✅ | ✅ | ✅ | ❌ |
-| Filtres booléens (ET / OU / NON) | ✅ | ✅ texte | partiel | ❌ |
-| Filtres `has:` (image, vidéo, sticker…) | ✅ | ✅ | ✅ | ❌ |
+| Type | extension de navigateur | appli desktop, ligne de commande | extension, appli web | appli desktop + script dans l'onglet Discord |
+| Reprise après interruption | ✅ | ❌ | ✅ | partielle |
+| Requêtes émises depuis ton onglet Discord | ✅ | ❌ | ❌ | ✅ lit ce que charge le client |
+| Rythme intégré, arrêt au premier refus de Discord | ✅ | ❌ relance | partiel | ❌ |
+| Export incrémental (nouveaux messages seulement) | ✅ automatique | manuel (`--after`) | manuel (plage de dates) | ✅ |
+| Plusieurs formats en un export | ✅ | ❌ | ❌ | — |
+| Formats | JSON, HTML, CSV, TXT | JSON, HTML, CSV, TXT | JSON, HTML, CSV, TXT | SQLite + visionneuse HTML |
+| Découpage des gros salons | ✅ | ✅ | ✅ | — |
+| Filtres ET / OU / NON | ✅ | ✅ en syntaxe texte | OU seulement | — |
+| Filtres `has:` (image, vidéo, sticker…) | ✅ | ✅ sans sticker | ✅ | — |
 | Serveurs, forums, threads, DMs, groupes | ✅ | ✅ | ✅ | partiel |
-| Réactions, embeds, stickers, réponses | ✅ | ✅ | ✅ | partiel |
 | Téléchargement des médias | ✅ | ✅ | ✅ | ✅ |
-| Aperçu avant export | ✅ | ❌ | ✅ | partiel |
-| **Planification (quotidienne / hebdo)** | ✅ | ❌ | ❌ | ❌ |
-| **Chiffrement zip AES-256** | ✅ | ❌ | ❌ | ❌ |
-| **Modèles de nom de fichier** | ✅ | ❌ | ❌ | ❌ |
-| Suppression en masse de messages | ✅ | ❌ | ✅ | ❌ |
-| **Langues de l'interface** | **15** | limité | anglais | anglais |
-| Gratuit, sans quota | ✅ | ✅ | ✅ | ❌ |
-| Open source | ✅ MIT | ✅ MIT | ✅ MIT | ❌ |
-| **Tout local, aucun compte externe** | ✅ | ✅ | ✅ | ❌ |
-| Télémétrie | opt-in, OFF | aucune | ⚠️ | ❌ analytics |
+| Aperçu avant export | ✅ | ❌ | ✅ | — |
+| Sauvegardes planifiées | ✅ intégrées | avec cron / Planificateur de tâches | ❌ | — |
+| Chiffrement zip AES-256 | ✅ | ❌ | ❌ | — |
+| Modèles de nom de fichier | ✅ | ✅ | ❌ | — |
+| Suppression en masse de messages | ✅ | ❌ | ✅ | — |
+| Langues de l'interface | 15 | 5 (appli), anglais (ligne de commande) | 2 | — |
+| Gratuit | ✅ | ✅ | ✅ (options payantes) | ✅ |
+| Licence | MIT | MIT | code visible, tous droits réservés | MIT |
+| Télémétrie | aucune (signalement de format opt-in, désactivé) | aucune | aucune | — |
+
+<sub>Vérifié le 8 novembre 2026 sur DiscordChatExporter 2.48, Discrub 2.2.8 et
+Discord History Tracker v47.4, d'après leur documentation et leur code source.
+— : sans objet ou non vérifié. Les extensions freemium du Chrome Web Store ne
+sont pas dans le tableau : celles que nous avons regardées limitent la version
+gratuite (quota par jour, ou 50 à 100 messages) et appellent elles-mêmes l'API
+Discord avec ton jeton. Une erreur ? [Ouvre une issue](https://github.com/atelier-sam/vespry/issues).</sub>
 
 <br/>
 
@@ -273,9 +282,8 @@ de sa part.
 ## 💜 Soutenir Vespry
 
 Vespry est gratuit, open source et sans publicité, et le restera. Les dons
-paient l'hébergement et le temps passé à suivre les changements de Discord.
-Choisis un montant : tu arrives sur une page sécurisée par Stripe, sans compte
-à créer.
+paient le temps passé à faire suivre Vespry quand Discord change. Choisis un
+montant : tu arrives sur une page de paiement Stripe, sans compte à créer.
 
 <p align="center">
   <a href="https://vespry-donors.sam-muselet.workers.dev/donate?amount=3"><img src="docs/brand/donate-fr-3.png" alt="Donner 3 €, un café" height="58"></a>
@@ -287,7 +295,7 @@ Choisis un montant : tu arrives sur une page sécurisée par Stripe, sans compte
 Tu choisis d'apparaître sur le **mur des soutiens** de l'extension, avec un
 prénom et un petit mot, ou de rester anonyme. Le tout premier soutien décroche
 le badge « Première Lueur ». Pas en mesure de donner ? Une ⭐ sur ce dépôt ou un
-mot à un ami aide tout autant.
+mot à un ami aide aussi.
 
 <br/>
 
@@ -371,13 +379,14 @@ hors de l'onglet. Notes d'architecture : [`CLAUDE.md`](CLAUDE.md).
 ## ⚠️ Avertissement
 
 Automatiser un compte utilisateur Discord est contraire aux conditions
-d'utilisation de Discord, et Discord sanctionne des comptes qui exportent leur
-historique depuis mars 2026. Le [mode discret](#️-mode-discret) réduit ce
+d'utilisation de Discord, et depuis mars 2026 des utilisateurs rapportent des
+sanctions sur leur compte après avoir exporté leur historique. Le [mode discret](#️-mode-discret) réduit ce
 risque sans le supprimer. Cet outil est fourni tel quel ; utilise-le sur tes
 propres données, à tes risques. Avant ton premier export, Vespry affiche cet
 avertissement dans ta langue et te demande de le valider. L'export officiel de
-Discord (Paramètres → Données et confidentialité → Demander mes données) reste
-la voie sans risque.
+Discord (Paramètres → Données et confidentialité → Demande de données) ne fait
+courir aucun risque à ton compte, mais il ne contient que tes propres
+messages.
 
 Vespry n'est pas affilié à Discord Inc. « Discord » et son logo sont des
 marques de Discord Inc.
@@ -387,7 +396,9 @@ marques de Discord Inc.
 ## 📄 Licence
 
 [MIT](LICENSE). Le client API Discord (`src/engine/discord-api.ts`) dérive de
-Discrub Classic (MIT). « Discrub » est une marque de prathercc, non utilisée ici.
+[Discrub Classic](https://github.com/pratherbytecraft/discrub-ext) (MIT,
+© Prather Bytecraft). « Discrub » est une marque de Prather Bytecraft ; Vespry
+n'y est pas affilié.
 
 <div align="center">
 

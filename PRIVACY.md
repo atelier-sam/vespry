@@ -150,12 +150,14 @@ Toute modification de cette politique est publiée dans le dépôt
 ## Discord
 
 Exporter son historique avec un compte utilisateur sort des conditions
-d'utilisation de Discord (https://discord.com/terms), et Discord sanctionne
-cet usage depuis mars 2026. Vespry réduit ce risque (requêtes émises par
-ton onglet, rythme humain, arrêt au premier refus) mais ne peut pas le
-supprimer : l'avertissement affiché avant le premier export le dit.
-L'export officiel de Discord (Paramètres → Données et confidentialité →
-Demander mes données) reste la voie sans risque.
+d'utilisation de Discord (https://discord.com/terms), et depuis mars 2026
+des utilisateurs rapportent des sanctions sur leur compte après avoir exporté
+leur historique. Vespry réduit ce risque (requêtes émises par ton onglet,
+rythme humain, arrêt au premier refus) mais ne peut pas le supprimer :
+l'avertissement affiché avant le premier export le dit. L'export officiel de
+Discord (Paramètres → Données et confidentialité → Demande de données) ne
+fait courir aucun risque à ton compte, mais il ne contient que tes propres
+messages.
 
 Vespry n'est pas affilié à Discord Inc. « Discord » est une marque de
 Discord Inc.

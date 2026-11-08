@@ -143,12 +143,12 @@ full git history) and noted in `CHANGELOG.md`.
 ## Discord
 
 Exporting your history with a user account goes beyond Discord's terms of
-service (https://discord.com/terms), and Discord has been sanctioning this
-use since March 2026. Vespry reduces the risk (requests sent by your tab,
-human pace, full stop at the first refusal) but cannot remove it: the
-warning shown before the first export says so. Discord's official export
-(Settings → Data & Privacy → Request all of my data) remains the risk-free
-way.
+service (https://discord.com/terms), and since March 2026 users have
+reported account sanctions after exporting their history. Vespry reduces the
+risk (requests sent by your tab, human pace, full stop at the first refusal)
+but cannot remove it: the warning shown before the first export says so.
+Discord's official export (Settings → Data & Privacy → Request Data) carries
+no risk for your account, but it only contains your own messages.
 
 Vespry is not affiliated with Discord Inc. "Discord" is a trademark of
 Discord Inc.

@@ -26,43 +26,46 @@
 
 > [!TIP]
 > **Vespry is free and has no ads, no account, no tracking.** It is built and
-> maintained by one person. If it saves a server's worth of memories for you,
-> [**a coffee keeps it going**](https://vespry-donors.sam-muselet.workers.dev/donate) ☕
+> maintained by one person. If it saved a server's history for you,
+> [**a coffee helps keep it going**](https://vespry-donors.sam-muselet.workers.dev/donate) ☕
 
 <br/>
 
 ## 🦉 Why Vespry
 
-A server you are leaving, a community about to shut down, years of messages you
-want to keep. Discord lets you take almost nothing with you. Most export
-extensions **break on large servers**: they load the whole history in one go,
-the tab runs out of memory, and you are left with nothing.
+Discord's official data export only contains the messages you wrote yourself:
+not the rest of the conversation, and attachments only as links. To keep a
+whole channel or server you need a third-party tool, and on a large server the
+export can run for hours. A closed tab, a crash or a network drop should not
+send you back to zero.
 
-Vespry turns the problem around:
+Vespry saves as it goes:
 
-- **Every batch of messages is written to disk** (IndexedDB) as it arrives.
-- If the export stops (tab closed, crash, network loss), **it resumes from the
-  last saved point** instead of starting over.
-- Close the Discord tab and the export **pauses**, then picks up by itself the
+- Every batch of messages is written to disk (IndexedDB) as it arrives.
+- If the export stops (tab closed, crash, network loss), it resumes from the
+  last saved point instead of starting over.
+- Close the Discord tab and the export pauses, then picks up by itself the
   next time Discord is open.
 
-The result is a **local `.zip` archive**, readable by a person as well as by an
-AI agent, that nobody but you ever sees.
+The result is a local `.zip` archive, readable by a person as well as by an
+AI agent, that stays on your computer.
 
 <br/>
 
 ## 🕵️ Discreet mode
 
-Since March 2026, Discord has been sanctioning accounts that export their
-history with third-party tools: forced logout, temporary restriction,
-suspension for repeat cases. Tools that query the API from their own context,
-fast and in parallel, leave an easy signature.
+Since March 2026, users of export tools have reported account sanctions after
+exporting their history: forced logout, temporary restriction, and in some
+cases suspension ([DiscordChatExporter #1497](https://github.com/Tyrrrz/DiscordChatExporter/issues/1497),
+[Discrub #14](https://github.com/pratherbytecraft/discrub/issues/14)). Discord has published nothing specific about export
+tools, but its rules forbid automating a user account. One likely signal:
+requests that do not look like the Discord client (without its headers and
+cookies), sent fast and in parallel.
 
-Vespry is built not to have one:
+What Vespry does instead:
 
-- **Requests leave from your discord.com tab**, sent by the Discord client
-  itself: same headers, same cookies, same API version. No request to Discord
-  ever leaves the extension.
+- **Requests leave from your discord.com tab**, with the Discord client's own
+  headers and cookies. The extension itself never calls the Discord API.
 - **Human pace by default**: one channel at a time, 1.5 to 3.5 s between reads,
   a pause of about ten minutes every 40 to 50 minutes, a per-session request
   cap. A Normal mode, twice as fast, sits behind a warning.
@@ -83,8 +86,9 @@ won't be sanctioned. Vespry says so before your first export, in your language.
 <td width="50%" valign="top">
 
 ### 🛡️ Crash-proof
-Resumes after any interruption, writes to disk in batches, restarts on its own
-when Discord reopens. The core of the project, covered by tests.
+Resumes after an interruption, writes to disk in batches, restarts on its own
+when Discord reopens. This is the core of the project, and it is covered by
+tests.
 
 </td>
 <td width="50%" valign="top">
@@ -100,7 +104,7 @@ zip; the password is erased as soon as the archive is built.
 
 ### 🤖 Agent-ready
 Structured JSON with a documented schema (`$schema`, `typeName`, `localPath`),
-ready to hand to an AI agent or your second brain. Full format:
+ready to hand to an AI agent or a notes app. Full format:
 [docs/SCHEMA.md](docs/SCHEMA.md).
 
 </td>
@@ -196,31 +200,36 @@ that erases all local Vespry data.
 
 ## 📊 Vespry compared
 
-| | Vespry | DiscordChatExporter | Discrub | Freemium extensions |
+| | Vespry | [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter) | [Discrub](https://github.com/pratherbytecraft/discrub) | [Discord History Tracker](https://github.com/chylex/Discord-History-Tracker) |
 |---|:--:|:--:|:--:|:--:|
-| Type | extension | desktop app | extension | extension |
-| **Resumes after interruption** | ✅ | ❌ | ❌ | ❌ |
-| **Requests sent by the Discord client** | ✅ | ❌ | ❌ | ? |
-| **Human pace + stop at first refusal** | ✅ | ❌ | partial | ? |
-| **Native incremental export** | ✅ | partial | ❌ | ⚠️ paid |
-| **Several formats in one export** | ✅ | ❌ | ❌ | ❌ |
-| JSON / HTML / CSV / TXT | ✅ | ✅ | JSON/HTML/CSV | varies |
-| Large channel splitting | ✅ | ✅ | ✅ | ❌ |
-| Boolean filters (AND / OR / NOT) | ✅ | ✅ text | partial | ❌ |
-| `has:` filters (image, video, sticker…) | ✅ | ✅ | ✅ | ❌ |
+| Type | browser extension | desktop app, CLI | extension, web app | desktop app + script in the Discord tab |
+| Resumes after an interruption | ✅ | ❌ | ✅ | partial |
+| Requests sent from your Discord tab | ✅ | ❌ | ❌ | ✅ reads what the client loads |
+| Built-in pacing, stops at Discord's first refusal | ✅ | ❌ retries | partial | ❌ |
+| Incremental export (new messages only) | ✅ automatic | manual (`--after`) | manual (date range) | ✅ |
+| Several formats in one export | ✅ | ❌ | ❌ | — |
+| Formats | JSON, HTML, CSV, TXT | JSON, HTML, CSV, TXT | JSON, HTML, CSV, TXT | SQLite + HTML viewer |
+| Large channel splitting | ✅ | ✅ | ✅ | — |
+| Filters with AND / OR / NOT | ✅ | ✅ text syntax | OR only | — |
+| `has:` filters (image, video, sticker…) | ✅ | ✅ no sticker | ✅ | — |
 | Servers, forums, threads, DMs, groups | ✅ | ✅ | ✅ | partial |
-| Reactions, embeds, stickers, replies | ✅ | ✅ | ✅ | partial |
 | Media download | ✅ | ✅ | ✅ | ✅ |
-| Preview before export | ✅ | ❌ | ✅ | partial |
-| **Scheduled backups (daily / weekly)** | ✅ | ❌ | ❌ | ❌ |
-| **AES-256 zip encryption** | ✅ | ❌ | ❌ | ❌ |
-| **File name templates** | ✅ | ❌ | ❌ | ❌ |
-| Bulk message delete | ✅ | ❌ | ✅ | ❌ |
-| **Interface languages** | **15** | limited | English | English |
-| Free, no quota | ✅ | ✅ | ✅ | ❌ |
-| Open source | ✅ MIT | ✅ MIT | ✅ MIT | ❌ |
-| **Fully local, no external account** | ✅ | ✅ | ✅ | ❌ |
-| Telemetry | opt-in, OFF | none | ⚠️ | ❌ analytics |
+| Preview before export | ✅ | ❌ | ✅ | — |
+| Scheduled backups | ✅ built in | with cron / Task Scheduler | ❌ | — |
+| AES-256 zip encryption | ✅ | ❌ | ❌ | — |
+| File name templates | ✅ | ✅ | ❌ | — |
+| Bulk message delete | ✅ | ❌ | ✅ | — |
+| Interface languages | 15 | 5 (app), English (CLI) | 2 | — |
+| Free | ✅ | ✅ | ✅ (paid extras) | ✅ |
+| License | MIT | MIT | source available, all rights reserved | MIT |
+| Telemetry | none (format report opt-in, off) | none | none | — |
+
+<sub>Checked on 8 November 2026 against DiscordChatExporter 2.48, Discrub 2.2.8
+and Discord History Tracker v47.4, from their documentation and source code.
+— means not applicable or not checked. Freemium exporters on the Chrome Web
+Store were left out: the ones we checked cap the free tier (a daily quota, or
+50 to 100 messages) and call the Discord API themselves with your token.
+Spotted a mistake? [Open an issue](https://github.com/atelier-sam/vespry/issues).</sub>
 
 <br/>
 
@@ -266,8 +275,8 @@ updated by the store and makes no such check.
 ## 💜 Support Vespry
 
 Vespry is free, open source and ad-free, and will stay that way. Donations pay
-for hosting and for the time spent keeping up with Discord's changes. Pick an
-amount: you land on a Stripe-secured page, no account needed.
+for the time it takes to keep Vespry working as Discord changes. Pick an
+amount: you land on a Stripe payment page, no account needed.
 
 <p align="center">
   <a href="https://vespry-donors.sam-muselet.workers.dev/donate?amount=3"><img src="docs/brand/donate-en-3.png" alt="Donate €3, a coffee" height="58"></a>
@@ -279,7 +288,7 @@ amount: you land on a Stripe-secured page, no account needed.
 You choose whether to appear on the **supporters wall** shown in the extension,
 with a name and a short message, or to stay anonymous. The very first supporter
 earns the "First Light" badge. Not in a position to give? A ⭐ on this repository
-or a word to a friend helps just as much.
+or a word to a friend helps too.
 
 <br/>
 
@@ -362,12 +371,12 @@ Architecture notes: [`CLAUDE.md`](CLAUDE.md).
 ## ⚠️ Disclaimer
 
 Automating a Discord user account goes against Discord's terms of service, and
-Discord has been sanctioning accounts that export their history since March
-2026. [Discreet mode](#️-discreet-mode) lowers that risk without removing it.
+since March 2026 users have reported account sanctions after exporting their
+history. [Discreet mode](#️-discreet-mode) lowers that risk without removing it.
 This tool is provided as is; use it on your own data, at your own risk. Before
 your first export, Vespry shows this warning in your language and asks you to
-accept it. Discord's official export (Settings → Data & Privacy → Request all
-of my data) remains the risk-free way.
+accept it. Discord's official export (Settings → Data & Privacy → Request Data)
+carries no risk for your account, but it only contains your own messages.
 
 Vespry is not affiliated with Discord Inc. "Discord" and its logo are
 trademarks of Discord Inc.
@@ -377,7 +386,9 @@ trademarks of Discord Inc.
 ## 📄 License
 
 [MIT](LICENSE). The Discord API client (`src/engine/discord-api.ts`) derives from
-Discrub Classic (MIT). "Discrub" is a trademark of prathercc, not used here.
+[Discrub Classic](https://github.com/pratherbytecraft/discrub-ext) (MIT,
+© Prather Bytecraft). "Discrub" is a trademark of Prather Bytecraft; Vespry is
+not affiliated with it.
 
 <div align="center">
 

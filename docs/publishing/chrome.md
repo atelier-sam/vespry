@@ -126,7 +126,7 @@ OPTIONAL DONATIONS: Stripe Checkout opens in a popup when user clicks
 public-only aggregated content from a Cloudflare Worker (no tracking).
 
 DISCLAIMER: Automating a Discord user account is against Discord ToS,
-and Discord has penalized accounts for exporting since March 2026.
+and since March 2026 users have reported account penalties after exporting.
 Tool is for personal use on one's own data, at user's own risk. This is
 stated in the README and in a warning shown before the first export, in
 the user's language (15 languages).

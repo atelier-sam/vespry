@@ -46,10 +46,10 @@ const TANUKI = user('100000000000000003', 'Tanuki', true);
 
 const GUILDS: RawGuild[] = [
   { id: '200000000000000001', name: 'Studio Kitsune', icon: null },
-  { id: '200000000000000002', name: 'Les Trailers', icon: null },
-  { id: '200000000000000003', name: 'WWOOF Sverige', icon: null },
+  { id: '200000000000000002', name: 'Night Owls', icon: null },
+  { id: '200000000000000003', name: 'Pixel Garden', icon: null },
   { id: '200000000000000004', name: 'Atelier Dev', icon: null },
-  { id: '200000000000000005', name: 'Photo & Drone', icon: null },
+  { id: '200000000000000005', name: 'Open Lab', icon: null },
 ];
 
 /* ── Salons du serveur actif (catégories + salons texte) ──────────────── */
@@ -157,7 +157,7 @@ const SCENE = new URLSearchParams(location.search).get('scene');
 if (SCENE === 'discret') {
   QUEUE.unshift({
     runId: 'run_demo_stopped',
-    guildName: 'Les Trailers',
+    guildName: 'Night Owls',
     status: 'paused',
     triggeredBy: 'user',
     channelsTotal: 6,

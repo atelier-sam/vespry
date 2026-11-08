@@ -4,12 +4,12 @@ Checklist consolidée de la première mise en ligne sur les trois stores.
 Détail par store : `chrome.md`, `edge.md`, `firefox.md`. Ce fichier est la
 **source de vérité unique** de l'état de préparation.
 
-## 1. Santé du code — ✅ vérifié 2026-06-07
+## 1. Santé du code — ✅ vérifié 2026-11-08 (d7162d2)
 
 | Vérif | Commande | État |
 |---|---|---|
 | Types stricts | `npm run typecheck` | ✅ 0 erreur |
-| Tests unitaires | `npm run test` | ✅ 173/173 |
+| Tests unitaires | `npm run test` | ✅ 448/448 (34 fichiers) ; worker 56/56 |
 | Build Chrome | `npm run build` → `dist/` | ✅ |
 | Build Firefox | `npm run build:firefox` → `dist-firefox/` | ✅ |
 | Lint AMO | `npm run firefox:lint` | ✅ 0 erreur, 0 notice, 2 warnings (libs) |

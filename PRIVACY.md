@@ -112,8 +112,9 @@ toi-même sur « Submit » dans GitHub. Le rapport contient la version de
 Vespry, ton navigateur, ta langue et le journal technique de la tâche ;
 avant d'ouvrir le formulaire, Vespry y **masque** les noms de serveur et de
 salons, les identifiants Discord, les liens et les adresses e-mail. Il ne
-contient jamais ton jeton ni le contenu de tes messages. Relis-le avant de
-l'envoyer.
+contient jamais ton jeton ni le contenu de tes messages. Le même rapport
+masqué est aussi copié dans ton presse-papier, au cas où il serait trop long
+pour le formulaire. Relis-le avant de l'envoyer.
 
 ## Tes droits (RGPD)
 

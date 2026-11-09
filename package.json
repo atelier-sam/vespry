@@ -34,6 +34,9 @@
     "test:e2e": "node scripts/e2e-test.mjs",
     "play": "node scripts/play.mjs"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@transcend-io/conflux": "^4.1.0",
     "@zip.js/zip.js": "2.8.26",

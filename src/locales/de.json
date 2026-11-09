@@ -110,6 +110,7 @@
   "report.this": "Melden",
   "report.copied": "Bericht kopiert ✓",
   "report.opened": "Issue geöffnet ✓",
+  "report.truncated": "Issue geöffnet · vollständiger Bericht kopiert, bei Bedarf einfügen ✓",
   "credits.support": "Unterstützen",
   "credits.title": "Vespry unterstützen",
   "credits.intro": "Vespry ist kostenlos und Open Source. Wenn es dir Zeit gespart hat, hilft ein Kaffee, es weiter zu verbessern.",

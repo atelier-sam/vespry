@@ -1,52 +1,51 @@
-title: "[Idée] "
-labels: ["idea"]
+# `id: version` is prefilled by the extension (src/diagnostics.ts, proposeImprovement).
+title: "[Idea] "
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Merci pour ta proposition. Pour qu'elle ait des chances d'être
-        retenue, raconte-la en partant du problème que tu vis, pas de la
-        solution. Une idée bien posée vaut dix idées vagues.
+        Thanks for the suggestion. English or French, both are fine.
+        Start from the problem you have, not from the solution: a well-described problem
+        is worth ten vague ideas.
 
   - type: textarea
     id: usecase
     attributes:
-      label: Le cas d'usage
-      description: Décris ce que tu essaies de faire avec Vespry et ce qui te bloque ou te fait perdre du temps actuellement.
+      label: Use case
+      description: What are you trying to do with Vespry, and what blocks you or wastes your time today?
       placeholder: |
-        Exemple : « Je veux archiver un serveur Discord avant qu'il ferme,
-        et après l'export j'aimerais pouvoir chercher rapidement un mot
-        dans tous les salons sans ouvrir chaque fichier HTML. »
+        Example: "I want to archive a Discord server before it closes, then search a word
+        across every channel without opening each HTML file."
     validations:
       required: true
 
   - type: textarea
     id: today
     attributes:
-      label: Ce que tu fais aujourd'hui
-      description: Quelle est ta solution actuelle (autre outil, contournement, abandon) ?
+      label: What you do today
+      description: Your current workaround (another tool, a manual step, giving up)?
       placeholder: |
-        Exemple : « J'utilise grep en ligne de commande, mais ça ne marche
-        que pour le TXT, pas pour le HTML qui a tous les contenus. »
+        Example: "I use grep on the command line, but it only works on the TXT export,
+        not on the HTML that has everything."
     validations:
       required: false
 
   - type: textarea
     id: idea
     attributes:
-      label: Ton idée (optionnel)
-      description: Si tu as une intuition de solution, vas-y. Sinon laisse vide, l'important c'est le problème.
+      label: Your idea (optional)
+      description: If you have a solution in mind, go ahead. Otherwise leave it empty; the problem is what matters.
       placeholder: |
-        Exemple : « Une page search.html dans le zip avec un index local
-        des messages, accessible hors ligne. »
+        Example: "A search.html page in the zip with a local index of the messages, usable offline."
     validations:
       required: false
 
   - type: input
     id: version
     attributes:
-      label: Version Vespry
-      description: Tu peux la trouver dans le popup de l'extension.
-      placeholder: "0.1.0"
+      label: Vespry version
+      description: Shown in the extension popup.
+      placeholder: "1.1.0"
     validations:
       required: false

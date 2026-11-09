@@ -1,0 +1,11 @@
+# Kept true on purpose: Vespry 1.0.x-1.1.0 open `issues/new?title=…&body=…`
+# without a template. Turn it off only once those versions are gone AND a test
+# with a non-member account shows the form still receives the report.
+blank_issues_enabled: true
+contact_links:
+  - name: 💡 Suggest an idea
+    url: https://github.com/atelier-sam/vespry/discussions/new?category=ideas
+    about: New features and improvements are discussed in Discussions, where others can vote.
+  - name: 📦 I only need my own messages
+    url: https://support.discord.com/hc/en-us/articles/360004027692
+    about: Discord's official data export (Settings → Data & Privacy) carries no risk for your account.

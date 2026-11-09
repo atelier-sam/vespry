@@ -74,7 +74,7 @@ import {
   type MentionLabels, type ResolvedMentions,
 } from '../../ui/markdown';
 import { getVersion } from '../../version';
-import { reportProblem } from '../../diagnostics';
+import { reportProblem, type ReportOutcome } from '../../diagnostics';
 import {
   isSchemaReportEnabled, setSchemaReportEnabled,
 } from '../../engine/schema-report';
@@ -718,7 +718,7 @@ export function Overlay({
           </div>
           {!noToken && (
             <ReportLink
-              summary={`Overlay : ${controller.error}`}
+              summary={`Overlay error: ${controller.error}`}
               log={[]}
               label={t('report.problem')}
             />
@@ -745,7 +745,7 @@ export function Overlay({
       <div class="v-top">
         <span class="v-logo"><OwlMark class="v-mark" />Vespry</span>
         <span style="font-size:11px;color:var(--muted);font-weight:600">v{getVersion()}</span>
-        <ReportLink summary="Problème signalé depuis Vespry" log={[]} label={t('report.problem')} />
+        <ReportLink summary="Problem reported from Vespry" log={[]} label={t('report.problem')} />
         <span class="v-theme-btn" onClick={cycleTheme} title={t(`theme.${theme}`)}>
           <ThemeIcon pref={theme} /> {t(`theme.${theme}`)}
         </span>
@@ -2572,7 +2572,7 @@ function TaskCard({
         )}
         {item.status === 'failed' && (
           <ReportLink
-            summary="Export échoué"
+            summary="Export failed"
             log={item.log}
             names={[item.guildName]}
             label={t('report.this')}
@@ -2649,12 +2649,13 @@ function ReportLink({
   /** Noms à masquer dans le rapport public (nom du serveur). */
   names?: readonly string[];
 }): JSX.Element {
-  const [done, setDone] = useState<'' | 'issue' | 'clipboard'>('');
+  const [done, setDone] = useState<'' | ReportOutcome>('');
   function go(e: MouseEvent): void {
     e.stopPropagation();
     void reportProblem(summary, log, names).then((r) => {
       setDone(r);
-      setTimeout(() => setDone(''), 3000);
+      // Rapport raccourci : laisser le temps de lire qu'il est dans le presse-papier.
+      setTimeout(() => setDone(''), r === 'issue-truncated' ? 8000 : 3000);
     });
   }
   return (
@@ -2663,7 +2664,9 @@ function ReportLink({
         ? t('report.copied')
         : done === 'issue'
           ? t('report.opened')
-          : label}
+          : done === 'issue-truncated'
+            ? t('report.truncated')
+            : label}
     </span>
   );
 }

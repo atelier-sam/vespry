@@ -110,6 +110,7 @@
   "report.this": "报告",
   "report.copied": "报告已复制 ✓",
   "report.opened": "问题已创建 ✓",
+  "report.truncated": "已打开 Issue · 完整报告已复制，如有需要请粘贴 ✓",
   "credits.support": "支持",
   "credits.title": "支持 Vespry",
   "credits.intro": "Vespry 免费开源。如果它对你有帮助,一杯咖啡的支持就能让它持续改进。",

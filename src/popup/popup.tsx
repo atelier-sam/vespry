@@ -210,10 +210,10 @@ function Popup(): JSX.Element {
         <span
           class="popup__report"
           onClick={() => {
-            // Ouvre une issue GitHub pré-remplie avec env + journal 60 lignes
-            // + champs Discord inconnus détectés. Sans contenu de messages
+            // Ouvre une issue GitHub (formulaire bug.yml) pré-remplie avec env +
+            // erreurs captées + champs Discord inconnus. Sans contenu de messages
             // ni jeton. Cf. src/diagnostics.ts pour le détail du rapport.
-            void reportProblem('Problème signalé depuis le popup Vespry');
+            void reportProblem('Problem reported from the Vespry popup');
           }}
         >
           {t('report.problem')}

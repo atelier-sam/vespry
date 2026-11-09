@@ -110,6 +110,7 @@
   "report.this": "Reportar",
   "report.copied": "Informe copiado ✓",
   "report.opened": "Incidencia abierta ✓",
+  "report.truncated": "Incidencia abierta · informe completo copiado, pégalo si hace falta ✓",
   "credits.support": "Apoyar",
   "credits.title": "Apoya Vespry",
   "credits.intro": "Vespry es gratuito y de código abierto. Si te ahorró tiempo, un café ayuda a mejorarlo.",

@@ -44,7 +44,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   /** Cohérence Preact : bascule l'état dès qu'une erreur est levée en rendu. */
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
-    return { crashed: true, summary: error.message || 'Erreur inconnue' };
+    return { crashed: true, summary: error.message || 'Unknown error' };
   }
 
   /**

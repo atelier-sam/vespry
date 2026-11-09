@@ -110,6 +110,7 @@
   "report.this": "신고",
   "report.copied": "보고서 복사됨 ✓",
   "report.opened": "이슈 열림 ✓",
+  "report.truncated": "이슈를 열었습니다 · 전체 보고서를 복사했으니 필요하면 붙여 넣으세요 ✓",
   "credits.support": "후원",
   "credits.title": "Vespry 후원하기",
   "credits.intro": "Vespry는 무료 오픈 소스입니다. 도움이 되었다면 커피 한 잔으로 계속 개선할 수 있어요.",

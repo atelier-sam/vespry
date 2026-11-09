@@ -146,7 +146,7 @@ export class DiscordApi {
     } catch (e) {
       if (isLatchingStop(e) && !this.halt) {
         this.halt = e;
-        recordEvent('warn', `Arrêt verrouillé (${e.kind}) : ${e.message}`);
+        recordEvent('warn', `Stop latched (${e.kind}): ${e.message}`);
         this.onHalt?.(e);
       }
       throw e;
@@ -195,7 +195,7 @@ export class DiscordApi {
           throw new DiscordApiError('rate-limited', 429, `Limite de débit Discord (${wait} s) sur ${path}`);
         }
         this.pacer.noteRateLimited();
-        recordEvent('warn', `429 sur ${path}, attente ${wait} s puis ralentissement`);
+        recordEvent('warn', `429 on ${path}, waiting ${wait} s then slowing down`);
         this.pacer.blockFor(wait * 1000 + this.pacer.pick(RETRY_JITTER));
         continue;
       }
@@ -308,7 +308,7 @@ export class DiscordApi {
       // 429 (rate-limit excédé) — tous non-fatals pour l'export lui-même.
       // Traçé pour qu'un utilisateur dont l'estimation foire en masse puisse
       // ouvrir un rapport éclairant.
-      recordEvent('warn', `searchMessageCount(${channelId}) a échoué : ${String(e)}`);
+      recordEvent('warn', `searchMessageCount(${channelId}) failed: ${String(e)}`);
       return null;
     }
   }
@@ -338,7 +338,7 @@ export class DiscordApi {
       if (isStopError(e)) throw e;
       // Même logique que searchMessageCount — non-fatal, mais on trace pour
       // pouvoir investiguer si l'estimation foire systématiquement sur les DMs.
-      recordEvent('warn', `searchDmMessageCount(${channelId}) a échoué : ${String(e)}`);
+      recordEvent('warn', `searchDmMessageCount(${channelId}) failed: ${String(e)}`);
       return null;
     }
   }
@@ -479,7 +479,7 @@ export class DiscordApi {
     } catch (e) {
       // Erreur réseau / CSP / lien malformé — l'export continue mais l'asset
       // manquera dans le zip. Sam doit voir ces lignes dans le rapport.
-      recordEvent('warn', `downloadAsset a échoué : ${String(e)} sur ${url.slice(0, 80)}`);
+      recordEvent('warn', `downloadAsset failed: ${String(e)} on ${url.slice(0, 80)}`);
       return null;
     }
   }

@@ -214,7 +214,7 @@ describe('rapport de bug : le nom du salon est masqué dans chaque langue', () =
         expect(raw, `${f} ${key}`).toContain(`#${CHANNEL}`);
         const masked = new ReportRedactor().line(raw);
         // Exactement le salon, rien d'autre : ni fuite, ni masquage du reste de la ligne.
-        expect(masked, `${f} ${key}`).toBe(raw.replace(`#${CHANNEL}`, '#salon-1'));
+        expect(masked, `${f} ${key}`).toBe(raw.replace(`#${CHANNEL}`, '#channel-1'));
       }
     });
   }
@@ -222,7 +222,7 @@ describe('rapport de bug : le nom du salon est masqué dans chaque langue', () =
   it('contrôle positif : un salon suivi de mots (« #x dans … ») avalerait la fin de la ligne', () => {
     const redactor = new ReportRedactor();
     const raw = `16:12:22  🗑 Suppression dans #${CHANNEL} de 12 msg`;
-    expect(redactor.line(raw)).not.toBe(raw.replace(`#${CHANNEL}`, '#salon-1'));
+    expect(redactor.line(raw)).not.toBe(raw.replace(`#${CHANNEL}`, '#channel-1'));
   });
 });
 

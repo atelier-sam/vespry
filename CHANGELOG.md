@@ -21,8 +21,16 @@ l'overlay et le popup vient de `package.json`.
   lui-même « — », « · » ou « … » laissait sa fin en clair ; un serveur nommé
   `https` désarmait le masquage des liens ; une parenthèse dans un lien en
   laissait la fin (nom de fichier, paramètres) en clair. Les noms exacts des
-  salons de la tâche sont désormais masqués en entier, et chaque passe du
-  masquage ne peut plus réécrire ce qu'une autre a déjà masqué.
+  salons de la tâche sont désormais masqués en entier.
+- **Masquage par intervalles** (seconde revue du 09/11/2026) : tous les
+  détecteurs cherchent sur le texte d'origine et ce qui se chevauche est
+  masqué d'un bloc. Un nom de serveur contenant une adresse ou un lien laissait
+  son début en clair ; un salon connu plus court que le vrai nom en laissait la
+  fin ; une ligne terminée par un retour chariot (texte CRLF) échappait au
+  masquage des salons. Sont aussi masqués : un salon dont le nom commence par
+  `#` ou un blanc, le nom d'un emoji de serveur dans une erreur de réaction,
+  les liens Discord ou `www.` sans schéma, les e-mails non ASCII. Une très
+  longue ligne ne bloque plus le rapport (temps linéaire).
 
 ### Dépôt
 - Formulaire de bug, `CONTRIBUTING.md`, modèle de pull request,

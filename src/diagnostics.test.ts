@@ -103,9 +103,73 @@ describe('ReportRedactor — noms et liens adverses (revue Codex, 09/11/2026)', 
     expect(r.line('err https://example.org/a]b?token=secret')).toBe('err <link>');
   });
 
-  it('une entrée ne peut pas fabriquer un jeton', () => {
+  it('caractères d\'usage privé en entrée : rendus tels quels, sans effet sur le masquage', () => {
     const out = new ReportRedactor(['Studio Kitsune']).line('a \uE000\uE100\uE001 Studio Kitsune');
-    expect(out).toBe('a \uFFFD\uE100\uFFFD [server]');
+    expect(out).toBe('a \uE000\uE100\uE001 [server]');
+  });
+
+  // Seconde revue Codex (09/11/2026) : régressions de la méthode par passes à jetons.
+  it('nom de serveur qui CONTIENT une adresse ou un lien : masqué en entier', () => {
+    expect(new ReportRedactor(['Alice sam@example.org']).line('serveur Alice sam@example.org prêt'))
+      .toBe('serveur [server] prêt');
+    expect(new ReportRedactor(['Studio https://example.org']).line('serveur Studio https://example.org prêt'))
+      .toBe('serveur [server] prêt');
+    // Contrôle positif : l'adresse seule, sans le nom, reste une adresse.
+    expect(new ReportRedactor(['Alice sam@example.org']).line('écrire à sam@example.org')).toBe('écrire à <e-mail>');
+  });
+
+  it('salon connu COURT, vrai nom inconnu plus long : la fin du nom ne reste pas en clair', () => {
+    const r = new ReportRedactor([], ['Dossier']);
+    for (const l of ['→ #Dossier — Alice Martin…', '✓ #Dossier — Alice Martin — 2 msg']) {
+      expect(r.line(l)).not.toMatch(/Alice|Martin/);
+    }
+    // Contrôle positif : le salon connu seul garde son alias et son compteur.
+    expect(r.line('✓ #Dossier — 2 msg')).toMatch(/^✓ #channel-\d+ — 2 msg$/u);
+  });
+
+  it('fin de ligne CR (texte CRLF) : le repli masque quand même', () => {
+    const r = new ReportRedactor();
+    expect(r.line('✓ #Alice — 2 msg\r')).toBe('✓ #channel-1 — 2 msg ');
+    expect(r.line('→ #Bob\u2028suite…')).not.toContain('Bob');
+  });
+
+  // Relecture adverse (Sonnet, 09/11/2026) : limites antérieures à la fusion d'intervalles.
+  it('salon INCONNU dont le nom commence par # ou un blanc : masqué', () => {
+    for (const name of ['#roadmap-secrète', '#1 Alice Martin', ' Alice Martin', '\u3000Alice', '\u00A0Alice', '##Alice']) {
+      const out = new ReportRedactor().line(`16:12:22  → #${name}…`);
+      expect(out, JSON.stringify(name)).toBe('16:12:22  → #channel-1…');
+    }
+    // Contrôle positif : un titre Markdown en tête de ligne reste.
+    expect(new ReportRedactor().line('### Journal')).toBe('### Journal');
+  });
+
+  it('nom d\'emoji de serveur dans une route de réaction : masqué', () => {
+    const out = new ReportRedactor().line('✗ refus : /channels/1100000000000000001/messages/1100000000000000002/reactions/alice_martin%3A1100000000000000003?limit=100&type=0');
+    expect(out).toBe('✗ refus : /channels/<id>/messages/<id>/reactions/<emoji>?limit=100&type=0');
+  });
+
+  it('liens sans schéma ou collés, e-mails non ASCII, identifiants collés', () => {
+    const r = new ReportRedactor();
+    expect(r.line('voir discord.gg/Xk3J9pQ et www.mon-site.fr/page')).toBe('voir <link> et <link>');
+    expect(r.line('img cdn.discordapp.com/attachments/1/2/moi.png')).toBe('img <link>');
+    expect(r.line('URLhttps://x.fr/a et https://x.fr/Alice\'s-CV.pdf')).toBe('URL<link> et <link>');
+    expect(r.line('écrire à josé@exemple.fr ou 山田@例え.jp')).toBe('écrire à <e-mail> ou <e-mail>');
+    expect(r.line('ids 11000000000000000011100000000000000002')).toBe('ids <id>');
+    // Contrôle positif : une pile d'extension reste lisible.
+    expect(r.line('at f (chrome-extension://abc/assets/x.js:1:2)')).toBe('at f (chrome-extension://abc/assets/x.js:1:2)');
+  });
+
+  it('longue ligne sans @ : masquage en temps linéaire', () => {
+    const t0 = performance.now();
+    new ReportRedactor().line('a'.repeat(200_000));
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
+  it('alias stable entre salon connu et repli pour le même nom', () => {
+    const r = new ReportRedactor([], ['général']);
+    expect(r.line('→ #général…')).toBe('→ #channel-1…');
+    expect(r.line('✓ #général — 3 msg')).toBe('✓ #channel-1 — 3 msg');
+    expect(r.line('#général · ↓ images: 2')).toBe('#channel-1 · ↓ images: 2');
   });
 });
 
@@ -117,6 +181,11 @@ describe('buildReport', () => {
     }
     expect(body).toContain('### Log');
     expect(body).toContain('#channel-2');
+  });
+  it('journal CRLF : aucune ligne n\'échappe au masquage', () => {
+    const body = buildReport('x', ['✓ #Alice — 2 msg\r\n→ #Bob Martin…\r'], new ReportRedactor());
+    expect(body).not.toMatch(/Alice|Bob|Martin|\r/u);
+    expect(body).toContain('#channel-1 — 2 msg');
   });
 });
 

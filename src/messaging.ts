@@ -91,6 +91,8 @@ export interface QueueItemView {
   assetsByKind: { image: number; video: number; audio: number; file: number };
   reactions: number;
   log: string[];
+  /** Noms exacts des salons vus par cette session, pour masquer un rapport de bug (cf. `QueueItem.channelNames`). */
+  channelNames?: string[];
   /** Le paquet est en mémoire : téléchargement immédiat. */
   zipReady: boolean;
   /**

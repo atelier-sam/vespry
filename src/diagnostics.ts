@@ -38,20 +38,48 @@ export function installGlobalHandlers(context: string): void {
   });
 }
 
+/** Séparateurs que le journal d'export écrit après un nom de salon (`formatLog`, 15 langues). */
+const CHANNEL_END = ['…', ' · ', ' — '] as const;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Masque ce qui identifie l'utilisateur dans une ligne de rapport. Une même
  * instance sert tout un rapport : un salon garde le même alias d'une ligne à
  * l'autre (`#channel-1`), pour que le journal reste lisible.
+ *
+ * Chaque passe remplace ce qu'elle trouve par un JETON opaque (caractères
+ * d'usage privé), rendu seulement à la fin : une passe suivante ne peut donc
+ * pas réinterpréter ce qu'une précédente a écrit. Revue Codex du 09/11/2026 :
+ * un serveur nommé `https` changeait `https://…` en `[server]://…` avant la
+ * passe des liens, qui ne le reconnaissait plus et laissait le lien en clair.
  */
 export class ReportRedactor {
   private readonly names: string[];
+  /** Salons connus, en une expression construite une fois (`null` : aucun). */
+  private readonly knownChannels: RegExp | null;
   private readonly channels = new Map<string, string>();
 
-  /** `names` : noms à masquer partout (le nom du serveur, en pratique). */
-  constructor(names: readonly string[] = []) {
+  /**
+   * `names` : noms à masquer partout (le nom du serveur, en pratique).
+   * `channelNames` : noms EXACTS des salons de la tâche, quand on les a : un
+   * nom qui contient lui-même un séparateur (`Dossier — Alice Martin`) est
+   * alors masqué en entier, sans dépendre de la passe de repli.
+   */
+  constructor(names: readonly string[] = [], channelNames: readonly string[] = []) {
     // Trop court, un nom masquerait des morceaux de mots ordinaires.
     this.names = [...new Set(names.map((n) => n.trim()).filter((n) => n.length >= 3))]
       .sort((a, b) => b.length - a.length);
+    const exact = [...new Set(channelNames.filter((n) => n.trim().length > 0))]
+      .sort((a, b) => b.length - a.length);
+    this.knownChannels = exact.length === 0
+      ? null
+      : new RegExp(
+        `(?<=^|\\s)#(${exact.map(escapeRegExp).join('|')})(?=${CHANNEL_END.map(escapeRegExp).join('|')}|$)`,
+        'gu',
+      );
   }
 
   private alias(channel: string): string {
@@ -64,20 +92,46 @@ export class ReportRedactor {
   }
 
   line(input: string): string {
-    let s = input;
-    for (const n of this.names) s = s.split(n).join('[server]');
-    // Salons : les formes écrites par le journal d'export (`formatLog`) —
-    // « → #nom… », « #nom · », « ✓ #nom — ». Un nom de fil peut contenir
-    // des espaces : on s'arrête au séparateur, pas à l'espace. Le `#` doit
-    // ouvrir un mot : les titres Markdown du rapport (`### Journal`) restent.
-    s = s.replace(/(?<=^|\s)#(?![#\s])(.+?)(?=…| · | — |$)/gu, (_m, name: string) => `#${this.alias(name)}`);
-    // Liens http(s) (pièces jointes signées, API…) ; les chemins
-    // chrome-extension:// et moz-extension:// des piles restent lisibles.
-    s = s.replace(/\bhttps?:\/\/[^\s)\]'"`<>]+/giu, '<link>');
-    s = s.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, '<e-mail>');
-    // Identifiants Discord (snowflakes, 17 à 20 chiffres).
+    const tokens: string[] = [];
+    const token = (text: string): string => {
+      tokens.push(text);
+      return `\uE000${String.fromCharCode(0xe100 + tokens.length - 1)}\uE001`;
+    };
+    // Une entrée ne peut pas fabriquer un jeton.
+    let s = input.replace(/[\uE000\uE001]/gu, '\uFFFD');
+
+    // 1. Salons connus, nom exact, à la place où le journal les écrit.
+    if (this.knownChannels) {
+      s = s.replace(this.knownChannels, (_m, name: string) => token(`#${this.alias(name)}`));
+    }
+    // 2. Repli pour un salon inconnu : `#` en début de mot (les titres Markdown
+    //    `### Journal` restent), nom jusqu'au DERNIER séparateur de la ligne,
+    //    sinon jusqu'à la fin. Un nom qui contient un séparateur est ainsi
+    //    masqué en entier ; au pire on masque aussi un compteur, jamais l'inverse.
+    s = s.replace(/(?<=^|\s)#(?![#\s])(.+)$/gu, (_m, rest: string) => {
+      let cut = -1;
+      let sep = '';
+      for (const end of CHANNEL_END) {
+        const i = rest.lastIndexOf(end);
+        if (i > cut) {
+          cut = i;
+          sep = end;
+        }
+      }
+      const name = cut > 0 ? rest.slice(0, cut) : rest;
+      const tail = cut > 0 ? rest.slice(cut + sep.length) : '';
+      return token(`#${this.alias(name)}`) + (cut > 0 ? sep + tail : '');
+    });
+    // 3. Liens http(s) jusqu'au prochain blanc ou guillemet : une parenthèse
+    //    ou un crochet peut faire partie du chemin (revue Codex, 09/11/2026).
+    //    Les chemins chrome-extension:// et moz-extension:// des piles restent.
+    s = s.replace(/\bhttps?:\/\/[^\s'"`<>]+/giu, () => token('<link>'));
+    s = s.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, () => token('<e-mail>'));
+    // 4. Nom du serveur, partout.
+    for (const n of this.names) s = s.split(n).join(token('[server]'));
+    // 5. Identifiants Discord (snowflakes, 17 à 20 chiffres).
     s = s.replace(/(?<!\d)\d{17,20}(?!\d)/gu, '<id>');
-    return s;
+    return s.replace(/\uE000([\uE100-\uEFFF])\uE001/gu, (_m, c: string) => tokens[c.charCodeAt(0) - 0xe100] ?? '');
   }
 }
 
@@ -342,10 +396,12 @@ export async function reportProblem(
   extraLines: string[] = [],
   /** Noms à masquer en plus des règles générales (nom du serveur). */
   names: readonly string[] = [],
+  /** Noms exacts des salons de la tâche (cf. `ReportRedactor`). */
+  channelNames: readonly string[] = [],
 ): Promise<ReportOutcome> {
   let full = '';
   try {
-    const redactor = new ReportRedactor(names);
+    const redactor = new ReportRedactor(names, channelNames);
     const report = collectReport(summary, extraLines, redactor);
     full = renderReport(report);
     const copied = await copy(full);

@@ -80,6 +80,13 @@ export interface QueueItem {
   reactions: number;
   /** Lignes de la mini-console (plafonné). */
   log: string[];
+  /**
+   * Noms exacts des salons vus dans le journal de CETTE session (plafonné) :
+   * le rapport de bug les masque en entier, même quand un nom contient un
+   * séparateur du journal (revue Codex, 09/11/2026). Absent pour une tâche
+   * reconstruite au démarrage : le repli du masqueur prend alors le relais.
+   */
+  channelNames?: string[];
   zip: Blob | null;
   /** Paquet chiffré impossible à refaire (cf. `QueueItemView.zipUnavailable`). */
   zipUnavailable?: boolean;
@@ -362,6 +369,9 @@ function formatLog(e: RunnerLogEvent): string {
       return journal('log.channel_done', { channel: e.channel, total: e.total });
   }
 }
+
+/** Plafond des noms de salon retenus pour masquer un rapport de bug. */
+const MAX_CHANNEL_NAMES = 2000;
 
 /** Ajoute une ligne à un log plafonné (mute la dernière ligne si dépassement). */
 function pushLog(log: string[], line: string): void {
@@ -1244,6 +1254,7 @@ export class VespryController {
         assetsByKind: q.assetsByKind,
         reactions: q.reactions,
         log: q.log,
+        ...(q.channelNames ? { channelNames: q.channelNames } : {}),
         zipReady: q.zip !== null,
         zipPacking: this.packing.has(q.runId),
         zipUnavailable: q.zipUnavailable === true,
@@ -1301,6 +1312,8 @@ export class VespryController {
           this.notify();
         },
         onLog: (e) => {
+          const seen = (item.channelNames ??= []);
+          if (seen.length < MAX_CHANNEL_NAMES && !seen.includes(e.channel)) seen.push(e.channel);
           pushLog(item.log, formatLog(e));
           this.notify();
         },

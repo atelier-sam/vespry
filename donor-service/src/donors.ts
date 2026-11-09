@@ -15,7 +15,7 @@ function toSource(s: string): DonorSource {
 }
 
 export interface Donor {
-  /** Numéro de soutien séquentiel. */
+  /** Numéro du soutien dans son projet (1er, 2e…). */
   seq: number;
   source: DonorSource;
   /** Nom affiché, null si anonyme. */
@@ -47,6 +47,8 @@ export interface NewDonor {
   message: string | null;
   isPublic: boolean;
   createdAt: number;
+  /** Projet soutenu : chaque projet a son propre mur. */
+  project: string;
 }
 
 /**
@@ -57,14 +59,15 @@ export async function insertDonor(db: D1Database, d: NewDonor): Promise<void> {
   await db
     .prepare(
       `INSERT OR IGNORE INTO donors
-         (source, external_id, name, message, is_public, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (source, external_id, name, message, is_public, created_at, project)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(d.source, d.externalId, d.name, d.message, d.isPublic ? 1 : 0, d.createdAt)
+    .bind(d.source, d.externalId, d.name, d.message, d.isPublic ? 1 : 0, d.createdAt, d.project)
     .run();
 }
 
 interface DonorRow {
+  /** Rang du soutien DANS son projet (1er, 2e…), pas le `seq` global. */
   seq: number;
   source: string;
   name: string | null;
@@ -72,24 +75,37 @@ interface DonorRow {
   created_at: number;
 }
 
-/** Construit le flux public des soutiens. */
-export async function getFeed(db: D1Database): Promise<DonorFeed> {
+/**
+ * Construit le flux public des soutiens d'un projet.
+ *
+ * Le numéro de soutien (et donc les paliers « 1er », « 10e »…) se compte dans
+ * le projet : le `seq` de la table est commun à tous les projets. Les entrées
+ * masquées gardent leur rang, comme avant le passage multi-projets, pour qu'un
+ * masquage ne renumérote pas les autres.
+ */
+export async function getFeed(db: D1Database, project: string): Promise<DonorFeed> {
   const totalRow = await db
-    .prepare('SELECT COUNT(*) AS n FROM donors WHERE hidden = 0')
+    .prepare('SELECT COUNT(*) AS n FROM donors WHERE hidden = 0 AND project = ?')
+    .bind(project)
     .first<{ n: number }>();
   const total = totalRow?.n ?? 0;
 
   const weekRow = await db
-    .prepare('SELECT COUNT(*) AS n FROM donors WHERE hidden = 0 AND created_at > ?')
-    .bind(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    .prepare('SELECT COUNT(*) AS n FROM donors WHERE hidden = 0 AND project = ? AND created_at > ?')
+    .bind(project, Date.now() - 7 * 24 * 60 * 60 * 1000)
     .first<{ n: number }>();
   const weekCount = weekRow?.n ?? 0;
 
   const res = await db
     .prepare(
-      `SELECT seq, source, name, message, created_at FROM donors
-       WHERE hidden = 0 ORDER BY created_at DESC LIMIT 30`,
+      `SELECT rank AS seq, source, name, message, created_at FROM (
+         SELECT ROW_NUMBER() OVER (ORDER BY seq) AS rank,
+                source, name, message, created_at, hidden
+         FROM donors WHERE project = ?
+       )
+       WHERE hidden = 0 ORDER BY created_at DESC, rank DESC LIMIT 30`,
     )
+    .bind(project)
     .all<DonorRow>();
 
   const recent: Donor[] = (res.results ?? []).map((r) => ({
@@ -104,7 +120,10 @@ export async function getFeed(db: D1Database): Promise<DonorFeed> {
   return { total, recent, nextMilestone: nextMilestone(total), weekCount };
 }
 
-/** Masque une entrée (modération manuelle). */
+/**
+ * Masque une entrée (modération manuelle). `seq` est celui de la table, tel
+ * que `/admin/list` le donne, pas le rang affiché sur un mur.
+ */
 export async function hideDonor(db: D1Database, seq: number): Promise<void> {
   await db.prepare('UPDATE donors SET hidden = 1 WHERE seq = ?').bind(seq).run();
 }

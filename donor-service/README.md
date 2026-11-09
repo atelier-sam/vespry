@@ -27,8 +27,8 @@ extension ◀──────────(GET /donors)── flux public (Dono
 
 | Route | Méthode | Auth | Rôle |
 |---|---|---|---|
-| `/donors` | GET | — (CORS ouvert) | flux public, cache 60 s |
-| `/checkout` | POST | — (CORS ouvert) | crée une session Stripe Checkout → `{ url }` |
+| `/donors` | GET | — (CORS ouvert) | flux public, cache 60 s ; `?project=<id>` (défaut `vespry`) |
+| `/checkout` | POST | — (CORS ouvert) | crée une session Stripe Checkout → `{ url }` ; `project` facultatif |
 | `/stripe/webhook` | POST | signature HMAC | ingestion Stripe |
 | `/checkout/success` | GET | — | page de retour (don réussi) |
 | `/checkout/cancel` | GET | — | page de retour (don annulé) |
@@ -36,6 +36,27 @@ extension ◀──────────(GET /donors)── flux public (Dono
 | `/github/webhook` | POST | HMAC-SHA256 | ingestion GitHub Sponsors |
 | `/admin/list` | GET | `ADMIN_SECRET` | liste complète (masqués inclus) |
 | `/admin/hide` | POST | `ADMIN_SECRET` | masque une entrée `{ seq }` |
+
+### Un mur par projet (09/11/2026)
+
+Le service encaisse pour plusieurs projets de L'Atelier de Sam, chacun avec son
+mur et ses paliers (le « 1er soutien » de chaque projet). La liste est FERMÉE,
+dans `src/projects.ts` : le libellé s'affiche sur la page de paiement Stripe et
+l'adresse de retour reçoit le donateur, on ne les prend donc jamais du client.
+
+- `POST /checkout` `{ amountCents, project?: "vespry", … }` : projet absent →
+  `vespry` (l'extension n'envoie rien) ; inconnu → `400 {"error":"unknown project"}`.
+- `GET /donors?project=vespry` : même règle.
+- Le webhook relit `metadata.project` du paiement ; un paiement d'avant n'en a
+  pas et va sur Vespry.
+- Ajouter un projet : une entrée `{ id, label, returnUrl? }`. Avec `returnUrl`
+  (https), le donateur y revient avec `donation=ok` ou `donation=cancel` ;
+  sans, il revient sur les pages de Vespry.
+- Ko-Fi et GitHub Sponsors ne disent pas quel projet est soutenu : rangés sur
+  Vespry.
+
+Base créée avant cette date : `migrations/0001_donors_project.sql`, une fois
+(appliquée en production le 09/11/2026).
 
 ## Déploiement (à faire une fois)
 
@@ -121,7 +142,7 @@ et messages problématiques à l'ingestion.
 ## Développement
 
 ```bash
-npm test        # tests unitaires (paliers, modération, parsing, signature)
+npm test        # tests unitaires + SQL réel du mur (SQLite de Node, Node 22)
 npm run typecheck
 npm run dev     # Worker local (wrangler dev)
 ```

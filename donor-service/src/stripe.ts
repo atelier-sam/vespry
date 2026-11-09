@@ -8,6 +8,7 @@
  * héberge la saisie. Aucun montant n'est stocké.
  */
 import { hmacSha256Hex, timingSafeEqual } from './hmac';
+import { projectOfPayment, VESPRY, type Project } from './projects';
 
 /** Montant minimal d'un don, en centimes (1 €). */
 export const MIN_CENTS = 100;
@@ -38,6 +39,15 @@ export interface CheckoutParams {
    * Absent : don lancé depuis la popup de l'extension.
    */
   via?: 'web';
+  /** Projet soutenu, déjà validé (`resolveProject`). Absent : Vespry. */
+  project?: Project;
+}
+
+/** Ajoute `donation=<état>` à l'adresse de retour d'un projet. */
+function withDonationState(base: string, state: 'ok' | 'cancel'): string {
+  const u = new URL(base);
+  u.searchParams.set('donation', state);
+  return u.toString();
 }
 
 /**
@@ -51,13 +61,22 @@ export function checkoutSessionBody(p: CheckoutParams): string {
   body.set('line_items[0][quantity]', '1');
   body.set('line_items[0][price_data][currency]', 'eur');
   body.set('line_items[0][price_data][unit_amount]', String(p.amountCents));
-  body.set('line_items[0][price_data][product_data][name]', 'Soutien à Vespry');
-  const via = p.via === 'web' ? '&via=web' : '';
-  body.set(
-    'success_url',
-    `${p.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}${via}`,
-  );
-  body.set('cancel_url', `${p.origin}/checkout/cancel${p.via === 'web' ? '?via=web' : ''}`);
+  const project = p.project ?? VESPRY;
+  body.set('line_items[0][price_data][product_data][name]', project.label);
+  if (project.returnUrl) {
+    // Le projet a sa propre page : le donateur y revient, quel que soit `via`.
+    body.set('success_url', withDonationState(project.returnUrl, 'ok'));
+    body.set('cancel_url', withDonationState(project.returnUrl, 'cancel'));
+  } else {
+    const via = p.via === 'web' ? '&via=web' : '';
+    body.set(
+      'success_url',
+      `${p.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}${via}`,
+    );
+    body.set('cancel_url', `${p.origin}/checkout/cancel${p.via === 'web' ? '?via=web' : ''}`);
+  }
+  // Relu au webhook pour ranger le soutien sur le mur de son projet.
+  body.set('metadata[project]', project.id);
   body.set('metadata[isPublic]', p.isPublic ? 'true' : 'false');
   if (p.donorName) body.set('metadata[donorName]', p.donorName);
   if (p.message) body.set('metadata[message]', p.message);
@@ -127,6 +146,8 @@ export interface StripeCheckoutEvent {
   donorName: string | null;
   message: string | null;
   isPublic: boolean;
+  /** Projet soutenu (`metadata.project`), Vespry pour les paiements d'avant. */
+  project: string;
 }
 
 /**
@@ -151,5 +172,6 @@ export function parseStripeEvent(body: string): StripeCheckoutEvent | null {
     donorName: typeof meta['donorName'] === 'string' ? meta['donorName'] : null,
     message: typeof meta['message'] === 'string' ? meta['message'] : null,
     isPublic: meta['isPublic'] === 'true',
+    project: projectOfPayment(meta['project']),
   };
 }

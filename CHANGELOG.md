@@ -3,7 +3,7 @@
 Versionnage sémantique (semver). La version affichée dans le header de
 l'overlay et le popup vient de `package.json`.
 
-## [Non publié] — chantier « export discret » (2026-11-06)
+## [1.1.0] — 2026-11-09 — export discret
 
 Depuis mars 2026, Discord sanctionne des comptes qui exportent leur
 historique par jeton utilisateur (déconnexion, restriction, suspension en
@@ -78,6 +78,11 @@ lots : une signature facile à repérer. Ce chantier la retire.
 - Retrait du lien GitHub Sponsors, qui menait à un profil jamais activé
   (`credits.json`, README, bouton Sponsor du dépôt `.github/FUNDING.yml`).
   Ko-fi et Sponsors restent dormants côté service de dons.
+- Page de dons publique `/donate` (15 langues), pour le README et le
+  bouton Sponsor de GitHub, qui mène au même mur.
+- Service de dons : un mur par projet soutenu (liste fermée des projets,
+  libellé de paiement et paliers propres à chacun). Rien ne change pour
+  l'extension, qui reste sur le mur de Vespry.
 
 ### Interne
 - Test de parité des 15 langues (mêmes clés, mêmes variables).

@@ -23,7 +23,7 @@ import { parseKofi } from './kofi';
 import { cleanText, MAX_MESSAGE, MAX_NAME } from './moderation';
 import { DEFAULT_CENTS, donatePage, parseDonateForm, presetFromQuery } from './donate-page';
 import { cancelPage, successPage } from './pages';
-import { DEFAULT_PROJECT, resolveProject } from './projects';
+import { DEFAULT_PROJECT, resolveProject, resolveReturnUrl } from './projects';
 import { handleSchemaReport } from './schema-reports';
 import {
   createCheckoutSession,
@@ -134,12 +134,15 @@ async function handleCheckout(req: Request, env: Env): Promise<Response> {
     message?: unknown;
     isPublic?: unknown;
     project?: unknown;
+    returnUrl?: unknown;
   } | null;
   if (!parsed || !validAmount(parsed.amountCents)) {
     return json({ error: 'invalid amount' }, 400);
   }
   const project = resolveProject(parsed.project);
   if (!project) return json({ error: 'unknown project' }, 400);
+  const returnUrl = resolveReturnUrl(parsed.returnUrl);
+  if (returnUrl === null) return json({ error: 'invalid returnUrl' }, 400);
   const isPublic = parsed.isPublic === true;
   const url = await createCheckoutSession(env.STRIPE_SECRET_KEY, {
     amountCents: parsed.amountCents,
@@ -155,6 +158,7 @@ async function handleCheckout(req: Request, env: Env): Promise<Response> {
     isPublic,
     origin: new URL(req.url).origin,
     project,
+    ...(returnUrl ? { returnUrl } : {}),
   });
   if (!url) return json({ error: 'stripe error' }, 502);
   return json({ url });

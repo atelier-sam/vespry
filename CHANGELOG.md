@@ -32,6 +32,13 @@ l'overlay et le popup vient de `package.json`.
   les liens Discord ou `www.` sans schéma, les e-mails non ASCII. Une très
   longue ligne ne bloque plus le rapport (temps linéaire).
 
+### Dons
+- Pot **atelier** (« Soutien à L'Atelier de Sam ») pour les dons lancés depuis
+  code.atelier-sam.fr, avec son propre mur ; le donateur revient sur l'établi.
+- `POST /checkout` accepte une page de retour (`returnUrl`), limitée à
+  l'origine exacte d'un projet inscrit : un don à Vespry lancé depuis le site
+  y revient au lieu de finir sur les pages du service.
+
 ### Dépôt
 - Formulaire de bug, `CONTRIBUTING.md`, modèle de pull request,
   `docs/maintaining.md` ; modèle d'idées des Discussions en anglais.

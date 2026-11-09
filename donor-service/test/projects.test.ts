@@ -11,7 +11,15 @@ import { DatabaseSync } from 'node:sqlite';
 import worker from '../src/index';
 import { getFeed, insertDonor, type NewDonor } from '../src/donors';
 import { hmacSha256Hex } from '../src/hmac';
-import { DEFAULT_PROJECT, projectOfPayment, resolveProject, type Project } from '../src/projects';
+import {
+  DEFAULT_PROJECT,
+  PROJECTS,
+  projectOfPayment,
+  resolveProject,
+  resolveReturnUrl,
+  returnOrigins,
+  type Project,
+} from '../src/projects';
 import { checkoutSessionBody, parseStripeEvent } from '../src/stripe';
 import { freshDb, readSql, sqliteD1 } from './d1-sqlite';
 
@@ -57,6 +65,82 @@ describe('resolveProject', () => {
       atelier: { id: 'atelier', label: "Soutien à L'Atelier de Sam" },
     };
     expect(resolveProject('atelier', registry)?.label).toBe("Soutien à L'Atelier de Sam");
+  });
+});
+
+describe('pot de l\'atelier (code.atelier-sam.fr, 09/11/2026)', () => {
+  it('inscrit, avec son libellé et sa page de retour en https', () => {
+    const a = resolveProject('atelier');
+    expect(a).toEqual({ id: 'atelier', label: "Soutien à L'Atelier de Sam", returnUrl: 'https://code.atelier-sam.fr/' });
+  });
+
+  it('le donateur revient à la racine de l\'établi, état en paramètre', () => {
+    const project = resolveProject('atelier') as Project;
+    const p = new URLSearchParams(checkoutSessionBody({
+      amountCents: 500, donorName: null, message: null, isPublic: false, origin: 'https://w.test', project,
+    }));
+    expect(p.get('success_url')).toBe('https://code.atelier-sam.fr/?donation=ok');
+    expect(p.get('cancel_url')).toBe('https://code.atelier-sam.fr/?donation=cancel');
+    expect(p.get('metadata[project]')).toBe('atelier');
+  });
+
+  it('toute page de retour inscrite est en https et se lit comme une URL', () => {
+    for (const p of Object.values(PROJECTS)) {
+      if (p.returnUrl) expect(new URL(p.returnUrl).protocol).toBe('https:');
+    }
+  });
+});
+
+describe('page de retour demandée par le client', () => {
+  it('absente ou vide : rien à changer', () => {
+    expect(resolveReturnUrl(undefined)).toBeUndefined();
+    expect(resolveReturnUrl(null)).toBeUndefined();
+    expect(resolveReturnUrl('')).toBeUndefined();
+  });
+
+  it('origines permises = celles des projets inscrits, et seulement elles', () => {
+    expect([...returnOrigins()]).toEqual(['https://code.atelier-sam.fr']);
+  });
+
+  it('sur l\'établi : acceptée, chemin, requête et fragment gardés', () => {
+    expect(resolveReturnUrl('https://code.atelier-sam.fr/')).toBe('https://code.atelier-sam.fr/');
+    expect(resolveReturnUrl('https://code.atelier-sam.fr/projets/vespry?x=1#soutenir'))
+      .toBe('https://code.atelier-sam.fr/projets/vespry?x=1#soutenir');
+    // Port par défaut explicite : même origine.
+    expect(resolveReturnUrl('https://code.atelier-sam.fr:443/')).toBe('https://code.atelier-sam.fr/');
+  });
+
+  it('refusée hors de la liste : autre site, sous-domaine, port, http, identifiants, forme', () => {
+    for (const bad of [
+      'https://evil.example/',
+      'https://code.atelier-sam.fr.evil.example/',
+      'https://x.code.atelier-sam.fr/',
+      'https://atelier-sam.fr/',
+      'https://code.atelier-sam.fr:8443/',
+      'http://code.atelier-sam.fr/',
+      'https://user@code.atelier-sam.fr/',
+      'https://user:pw@code.atelier-sam.fr/',
+      'javascript:alert(1)',
+      '//code.atelier-sam.fr/',
+      '/relatif',
+      'pas une url',
+      `https://code.atelier-sam.fr/${'a'.repeat(2048)}`,
+      42,
+      ['https://code.atelier-sam.fr/'],
+    ]) {
+      expect(resolveReturnUrl(bad), String(bad).slice(0, 60)).toBeNull();
+    }
+  });
+
+  it('un don à Vespry parti de l\'établi y revient, fragment APRÈS l\'état', () => {
+    const p = new URLSearchParams(checkoutSessionBody({
+      amountCents: 300, donorName: null, message: null, isPublic: false, origin: 'https://w.test',
+      returnUrl: 'https://code.atelier-sam.fr/?p=vespry#soutenir',
+    }));
+    expect(p.get('metadata[project]')).toBe('vespry');
+    expect(p.get('line_items[0][price_data][product_data][name]')).toBe('Soutien à Vespry');
+    expect(p.get('success_url')).toBe('https://code.atelier-sam.fr/?p=vespry&donation=ok#soutenir');
+    expect(p.get('cancel_url')).toBe('https://code.atelier-sam.fr/?p=vespry&donation=cancel#soutenir');
   });
 });
 
@@ -184,6 +268,38 @@ describe('routes', () => {
     expect(res.status).toBe(200);
     const body = new URLSearchParams(String((stripe.mock.calls[0] as unknown as [string, RequestInit])[1].body));
     expect(body.get('metadata[project]')).toBe('vespry');
+  });
+
+  it('POST /checkout page de retour hors liste : 400, Stripe jamais appelé', async () => {
+    const stripe = vi.fn();
+    vi.stubGlobal('fetch', stripe);
+    const res = await worker.fetch(new Request('https://x.test/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ amountCents: 300, project: 'vespry', returnUrl: 'https://evil.example/' }),
+    }), env(freshDb().d1));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid returnUrl' });
+    expect(stripe).not.toHaveBeenCalled();
+  });
+
+  it('contrôle positif : POST /checkout depuis l\'établi, Vespry et atelier reviennent sur l\'établi', async () => {
+    const stripe = vi.fn(async () => new Response(JSON.stringify({ url: 'https://checkout.stripe.com/c/pay/cs_test_3' })));
+    vi.stubGlobal('fetch', stripe);
+    const sent = async (payload: Record<string, unknown>) => {
+      const res = await worker.fetch(new Request('https://x.test/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ amountCents: 300, ...payload }),
+      }), env(freshDb().d1));
+      expect(res.status).toBe(200);
+      const calls = stripe.mock.calls as unknown as [string, RequestInit][];
+      return new URLSearchParams(String(calls.at(-1)?.[1].body));
+    };
+    const v = await sent({ project: 'vespry', returnUrl: 'https://code.atelier-sam.fr/', fleche: 'autre' });
+    expect([v.get('metadata[project]'), v.get('success_url')]).toEqual(['vespry', 'https://code.atelier-sam.fr/?donation=ok']);
+    // `fleche` est ignoré : rien n'en part chez Stripe.
+    expect([...v.keys()].some((k) => k.includes('fleche'))).toBe(false);
+    const a = await sent({ project: 'atelier' });
+    expect([a.get('metadata[project]'), a.get('cancel_url')]).toEqual(['atelier', 'https://code.atelier-sam.fr/?donation=cancel']);
   });
 
   it('GET /donors : projet inconnu refusé, défaut = Vespry', async () => {

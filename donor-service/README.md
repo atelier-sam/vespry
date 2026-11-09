@@ -55,6 +55,20 @@ l'adresse de retour reçoit le donateur, on ne les prend donc jamais du client.
 - Ko-Fi et GitHub Sponsors ne disent pas quel projet est soutenu : rangés sur
   Vespry.
 
+Projets inscrits : `vespry` (pages de ce service) et `atelier` (« Soutien à
+L'Atelier de Sam », retour sur `https://code.atelier-sam.fr/`, l'établi du site).
+
+**Page de retour demandée par le client** : `POST /checkout { …, returnUrl }`.
+Elle prime sur celle du projet ; c'est ainsi qu'un don à Vespry lancé depuis
+code.atelier-sam.fr revient sur l'établi. Acceptée seulement en https, sans
+identifiants, sur l'ORIGINE EXACTE d'une page de retour inscrite (aujourd'hui
+`https://code.atelier-sam.fr` ; ni sous-domaine, ni autre port), 2 048
+caractères au plus. Sinon `400 {"error":"invalid returnUrl"}` et Stripe n'est
+pas appelé : un retour libre ferait de la page de paiement de la société une
+redirection ouverte. `donation=ok|cancel` est ajouté à la requête, avant
+l'éventuel fragment (`/?donation=ok#soutenir`). Tout autre champ du corps
+(par exemple `fleche`) est ignoré.
+
 Base créée avant cette date : `migrations/0001_donors_project.sql`, une fois
 (appliquée en production le 09/11/2026).
 

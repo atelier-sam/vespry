@@ -41,6 +41,11 @@ export interface CheckoutParams {
   via?: 'web';
   /** Projet soutenu, déjà validé (`resolveProject`). Absent : Vespry. */
   project?: Project;
+  /**
+   * Page de retour demandée par le client, déjà validée (`resolveReturnUrl`).
+   * Prime sur celle du projet.
+   */
+  returnUrl?: string;
 }
 
 /** Ajoute `donation=<état>` à l'adresse de retour d'un projet. */
@@ -63,10 +68,11 @@ export function checkoutSessionBody(p: CheckoutParams): string {
   body.set('line_items[0][price_data][unit_amount]', String(p.amountCents));
   const project = p.project ?? VESPRY;
   body.set('line_items[0][price_data][product_data][name]', project.label);
-  if (project.returnUrl) {
-    // Le projet a sa propre page : le donateur y revient, quel que soit `via`.
-    body.set('success_url', withDonationState(project.returnUrl, 'ok'));
-    body.set('cancel_url', withDonationState(project.returnUrl, 'cancel'));
+  const back = p.returnUrl ?? project.returnUrl;
+  if (back) {
+    // Page du client ou du projet : le donateur y revient, quel que soit `via`.
+    body.set('success_url', withDonationState(back, 'ok'));
+    body.set('cancel_url', withDonationState(back, 'cancel'));
   } else {
     const via = p.via === 'web' ? '&via=web' : '';
     body.set(

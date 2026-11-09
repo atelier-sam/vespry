@@ -128,7 +128,7 @@ async function syncScheduledAlarm(): Promise<void> {
     await installAlarmFor(chrome.alarms, schedule);
   } catch (e) {
     console.warn('[Vespry] sync alarm a échoué :', e);
-    recordEvent('warn', `syncScheduledAlarm a échoué : ${String(e)}`);
+    recordEvent('warn', `syncScheduledAlarm failed: ${String(e)}`);
   }
 }
 

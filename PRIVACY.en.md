@@ -106,7 +106,9 @@ pre-filled. Nothing is sent until you click "Submit" in GitHub yourself. The
 report contains the Vespry version, your browser, your language and the
 task's technical log; before opening the form, Vespry **masks** server and
 channel names, Discord identifiers, links and e-mail addresses. It never
-contains your token or the content of your messages. Read it before sending.
+contains your token or the content of your messages. The same masked report is
+also copied to your clipboard, in case it is too long for the form. Read it
+before sending.
 
 ## Your rights (GDPR)
 

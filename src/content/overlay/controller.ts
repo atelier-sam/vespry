@@ -36,7 +36,6 @@ import {
   isAutoResumable,
   isLatchingStop,
   isStopError,
-  stopMessage,
   type DiscordErrorKind,
   type RawChannel,
   type RawGuild,
@@ -750,7 +749,7 @@ export class VespryController {
           // Arrêt net (refus, rythme, onglet fermé) : on n'insiste pas, on
           // rend ce qu'on a. L'export lui-même s'arrêtera proprement.
           if (isStopError(e)) {
-            recordEvent('warn', `estimateMessages interrompu : ${stopMessage(e.kind)}`);
+            recordEvent('warn', `estimateMessages stopped: ${e.kind}`);
             return { total: null, stop: e.kind as StopKind };
           }
           throw e;
@@ -783,7 +782,7 @@ export class VespryController {
       // L'aperçu est secondaire (UX read-only avant export) — on n'interrompt
       // rien, mais on trace pour qu'un utilisateur dont l'aperçu reste vide
       // sache pourquoi en signalant un problème.
-      recordEvent('warn', `previewChannel(${channelId}) a échoué : ${String(e)}`);
+      recordEvent('warn', `previewChannel(${channelId}) failed: ${String(e)}`);
       return [];
     }
   }
@@ -880,7 +879,7 @@ export class VespryController {
         // Discord a refusé pendant la découverte : le verrou est posé, la
         // tâche est créée sans les fils et s'arrête à sa première requête,
         // avec la raison affichée (rien n'est émis entre-temps).
-        recordEvent('warn', `découverte des fils interrompue : ${String(e)}`);
+        recordEvent('warn', `thread discovery stopped: ${String(e)}`);
       }
     }
     const runId = await planGuildExport(this.store, guild, expanded, options);
@@ -1117,7 +1116,7 @@ export class VespryController {
     this.api?.clearHalt();
     const reload = this.sessionHalt !== null && !this.api;
     this.sessionHalt = null;
-    recordEvent('info', 'Verrou d\'arrêt levé par l\'utilisateur');
+    recordEvent('info', 'Stop latch cleared by the user');
     this.notify();
     // Verrou posé au chargement de la session : le geste relance ce chargement.
     if (reload) void this.retrySession();

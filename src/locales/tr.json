@@ -110,6 +110,7 @@
   "report.this": "Bildir",
   "report.copied": "Rapor kopyalandı ✓",
   "report.opened": "Sorun açıldı ✓",
+  "report.truncated": "Kayıt açıldı · tam rapor kopyalandı, gerekirse yapıştır ✓",
   "credits.support": "Destekle",
   "credits.title": "Vespry'i destekle",
   "credits.intro": "Vespry ücretsiz ve açık kaynaktır. Sana zaman kazandırdıysa, bir kahve yardımı geliştirmeye devam etmesini sağlar.",

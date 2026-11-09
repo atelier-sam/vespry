@@ -110,6 +110,7 @@
   "report.this": "報告",
   "report.copied": "レポートをコピーしました ✓",
   "report.opened": "イシューを開きました ✓",
+  "report.truncated": "Issue を開きました · 完全なレポートをコピーしました。必要なら貼り付けてください ✓",
   "credits.support": "支援する",
   "credits.title": "Vespry を支援する",
   "credits.intro": "Vespry は無料のオープンソースです。役に立ったらコーヒー一杯の支援で改善を続けられます。",

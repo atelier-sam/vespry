@@ -5,7 +5,10 @@
  * contenu de messages ».
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildReport, ReportRedactor, reportProblem } from './diagnostics';
+import {
+  buildIssueUrl, buildReport, collectReport, ISSUE_FORM, ISSUE_URL_MAX, renderReport, ReportRedactor, reportProblem,
+  wellFormed,
+} from './diagnostics';
 
 vi.mock('./version', () => ({ GITHUB_REPO: 'atelier-sam/vespry', getVersion: () => '1.1.0' }));
 
@@ -29,27 +32,28 @@ describe('ReportRedactor', () => {
     const r = new ReportRedactor();
     const out = LOG.slice(0, 4).map((l) => r.line(l));
     expect(out).toEqual([
-      '16:12:22  → #salon-1…',
-      '16:12:25  #salon-1 · +100 msg',
-      '16:12:26  #salon-2 · ↓ 3 images',
-      '16:12:30  ✓ #salon-1 — 2 msg',
+      '16:12:22  → #channel-1…',
+      '16:12:25  #channel-1 · +100 msg',
+      '16:12:26  #channel-2 · ↓ 3 images',
+      '16:12:30  ✓ #channel-1 — 2 msg',
     ]);
   });
 
   it('identifiants, liens et e-mails masqués', () => {
     const r = new ReportRedactor();
     expect(r.line(LOG[4] ?? '')).toBe('16:12:31  ✗ salon introuvable : run_x/<id>');
-    expect(r.line(LOG[5] ?? '')).toBe('16:12:32  ✗ échec <lien>');
+    expect(r.line(LOG[5] ?? '')).toBe('16:12:32  ✗ échec <link>');
     expect(r.line(LOG[6] ?? '')).toBe('16:12:33  ✗ contact <e-mail>');
   });
 
   it('nom du serveur masqué partout ; nom trop court ignoré', () => {
-    expect(new ReportRedactor(['Studio Kitsune']).line('Paquet de Studio Kitsune prêt')).toBe('Paquet de [serveur] prêt');
+    expect(new ReportRedactor(['Studio Kitsune']).line('Paquet de Studio Kitsune prêt')).toBe('Paquet de [server] prêt');
     expect(new ReportRedactor(['a']).line('une ligne banale')).toBe('une ligne banale');
   });
 
   it('contrôle positif : les titres Markdown et les chemins d\'extension restent', () => {
     const r = new ReportRedactor();
+    expect(r.line('### Log')).toBe('### Log');
     expect(r.line('### Journal')).toBe('### Journal');
     expect(r.line('at f (chrome-extension://abcdef/assets/x.js:1:2)')).toBe('at f (chrome-extension://abcdef/assets/x.js:1:2)');
     expect(r.line('16:12:40  📦 Paquet prêt — 0.1 Mo')).toBe('16:12:40  📦 Paquet prêt — 0.1 Mo');
@@ -62,8 +66,8 @@ describe('buildReport', () => {
     for (const leak of ['général', 'Mon fil', '1100000000000000002', 'cdn.discordapp.com', 'sam@example.org']) {
       expect(body, leak).not.toContain(leak);
     }
-    expect(body).toContain('### Journal');
-    expect(body).toContain('#salon-2');
+    expect(body).toContain('### Log');
+    expect(body).toContain('#channel-2');
   });
 });
 
@@ -76,6 +80,172 @@ describe('reportProblem', () => {
     expect(url).toContain('github.com/atelier-sam/vespry/issues/new');
     expect(url).not.toContain('Studio Kitsune');
     expect(url).not.toContain('général');
-    expect(url).toContain('[serveur]');
+    expect(url).toContain('[server]');
+  });
+  it('formulaire bug.yml, champ report, plus de body=', async () => {
+    const open = vi.fn(() => null);
+    vi.stubGlobal('window', { open });
+    expect(await reportProblem('Export failed', LOG.slice(0, 2))).toBe('issue');
+    const url = String((open.mock.calls[0] as unknown[] | undefined)?.[0]);
+    expect(url).toContain('/issues/new?template=bug.yml&title=');
+    expect(url).toContain('&report=');
+    expect(url).not.toContain('body=');
+    expect(new URL(url).searchParams.get('title')).toBe('[bug] Export failed');
+  });
+
+  it('rapport trop long : rapport COMPLET copié AVANT l\'ouverture, notice qui dit de coller', async () => {
+    const order: string[] = [];
+    const writeText = vi.fn(async (_t: string) => { order.push('copy'); });
+    const open = vi.fn(() => { order.push('open'); return null; });
+    vi.stubGlobal('window', { open });
+    vi.stubGlobal('navigator', { language: 'en', userAgent: 'test', clipboard: { writeText } });
+    expect(await reportProblem('Export failed', bigLog(250, 200))).toBe('issue-truncated');
+    expect(order).toEqual(['copy', 'open']);
+    const url = String((open.mock.calls[0] as unknown[] | undefined)?.[0]);
+    expect(url.length).toBeLessThanOrEqual(ISSUE_URL_MAX);
+    expect(reportOf(url)).toContain('the full report is in your clipboard: paste it here');
+    expect(new URL(url).searchParams.get('version')).toBe('1.1.0');
+    const copied = String(writeText.mock.calls[0]?.[0]);
+    expect(copied).toContain('line 000 ');
+    expect(copied).toContain('line 249 ');
+    expect(copied).not.toContain('removed (');
+  });
+
+  it('copie refusée : jamais « issue-truncated », la notice ne promet pas le presse-papier', async () => {
+    const writeText = vi.fn(async () => { throw new Error('Document is not focused'); });
+    const open = vi.fn(() => null);
+    vi.stubGlobal('window', { open });
+    vi.stubGlobal('navigator', { language: 'en', userAgent: 'test', clipboard: { writeText } });
+    expect(await reportProblem('Export failed', bigLog(250, 200))).toBe('issue');
+    const text = reportOf(String((open.mock.calls[0] as unknown[] | undefined)?.[0]));
+    expect(text).toContain('(report too long for a link)');
+    expect(text).not.toContain('clipboard');
+  });
+
+  it('moitié de paire UTF-16 dans le journal : pas d\'exception, U+FFFD à la place', async () => {
+    const open = vi.fn(() => null);
+    vi.stubGlobal('window', { open });
+    const broken = '📦 Paquet'.slice(1); // commence par une moitié basse isolée
+    expect(await reportProblem('x\uD83D', [broken, ...bigLog(250, 200)])).not.toBe('clipboard');
+    const url = String((open.mock.calls[0] as unknown[] | undefined)?.[0]);
+    expect(() => decodeURIComponent(url)).not.toThrow();
+    expect(wellFormed(broken)).toBe('� Paquet');
+  });
+});
+
+/** `n` lignes de `width` caractères, numérotées pour savoir lesquelles restent. */
+function bigLog(n: number, width: number, filler = 'x'): string[] {
+  return Array.from({ length: n }, (_, i) => `line ${String(i).padStart(3, '0')} `.padEnd(width, filler));
+}
+
+function reportOf(url: string): string {
+  return new URL(url).searchParams.get('report') ?? '';
+}
+
+/** Clôtures ``` équilibrées et pied présent : le formulaire ajoute ses champs APRÈS. */
+function wellShaped(text: string): boolean {
+  const fences = text.split('\n').filter((l) => l === '```').length;
+  return fences % 2 === 0 && text.endsWith('Read it before sending: the issue is public._');
+}
+
+describe('buildIssueUrl', () => {
+  const REPO = 'atelier-sam/vespry';
+
+  it('contrôle positif : un petit rapport passe entier, sans notice', () => {
+    const r = collectReport('Export failed', LOG.slice(0, 3));
+    const { url, truncated } = buildIssueUrl(REPO, '[bug] Export failed', r);
+    expect(truncated).toBe(false);
+    expect(reportOf(url)).toBe(renderReport(r));
+    expect(reportOf(url)).not.toContain('removed');
+    expect(url).toContain(`issues/new?template=${ISSUE_FORM.file}&title=`);
+  });
+
+  it('250 lignes de 200 caractères : URL ≤ 5000, retrait MINIMAL des plus anciennes, compte exact', () => {
+    const r = collectReport('Export failed', bigLog(250, 200));
+    const { url, truncated } = buildIssueUrl(REPO, '[bug] Export failed', r);
+    expect(truncated).toBe(true);
+    expect(url.length).toBeLessThanOrEqual(ISSUE_URL_MAX);
+    const text = reportOf(url);
+    expect(wellShaped(text)).toBe(true);
+    const m = /… (\d+) earlier log lines removed \(report too long for a link\) …/u.exec(text);
+    expect(m).not.toBeNull();
+    const dropped = Number(m?.[1]);
+    const kept = text.split('\n').filter((l) => l.startsWith('line '));
+    expect(dropped + kept.length).toBe(250);
+    expect(kept.at(-1)).toMatch(/^line 249 /u);
+    expect(kept[0]).toMatch(new RegExp(`^line ${String(dropped).padStart(3, '0')} `, 'u'));
+    // Minimal : avec une ligne retirée de moins, l'URL dépasserait.
+    const head = url.split(`&${ISSUE_FORM.report}=`)[0] ?? '';
+    const lessTrim = renderReport(r, { log: dropped - 1, errors: 0, unknowns: 0, copied: false });
+    expect(`${head}&report=${encodeURIComponent(lessTrim)}`.length).toBeGreaterThan(ISSUE_URL_MAX);
+  });
+
+  it('caractères non ASCII comptés APRÈS encodage (japonais : 9 octets par caractère)', () => {
+    const r = collectReport('エクスポート失敗', bigLog(120, 120, '日'));
+    const { url, truncated } = buildIssueUrl(REPO, '[bug] エクスポート失敗', r);
+    expect(truncated).toBe(true);
+    expect(url.length).toBeLessThanOrEqual(ISSUE_URL_MAX);
+    expect(() => decodeURIComponent(url)).not.toThrow();
+    expect(reportOf(url)).toContain('earlier log lines removed');
+  });
+
+  it('masqué d\'abord : aucune fuite, et l\'URL est une sous-séquence du rapport complet', () => {
+    const log = [...LOG, ...bigLog(200, 150)];
+    const r = collectReport('Export failed: Studio Kitsune', log, new ReportRedactor(['Studio Kitsune']));
+    const { url, truncated } = buildIssueUrl(REPO, `[bug] ${r.summary}`, r);
+    expect(truncated).toBe(true);
+    for (const leak of ['Studio Kitsune', 'général', '1100000000000000002', 'sam@example.org']) {
+      expect(decodeURIComponent(url), leak).not.toContain(leak);
+    }
+    expect(r.summary).toContain('[server]');
+    const full = new Set(renderReport(r).split('\n'));
+    const extra = reportOf(url).split('\n').filter((l) => !full.has(l));
+    expect(extra).toHaveLength(1); // la seule ligne neuve est la notice
+    expect(extra[0]).toMatch(/earlier log lines removed/u);
+  });
+
+  it('planchers : le journal garde ses 15 dernières lignes avant que les erreurs soient touchées', () => {
+    const r = { ...collectReport('x', bigLog(100, 100)), errors: bigLog(40, 100, 'e') };
+    const text = reportOf(buildIssueUrl(REPO, '[bug] x', r).url);
+    expect(text).toMatch(/earlier error lines removed/u);
+    expect(text.split('\n').filter((l) => /^line \d{3} x/u.test(l))).toHaveLength(15);
+    expect(text.split('\n').filter((l) => /^line \d{3} e/u.test(l)).length).toBeGreaterThanOrEqual(10);
+    expect(wellShaped(text)).toBe(true);
+  });
+
+  it('balayage de la limite : toujours ≤ max, toujours décodable, notice juste dès que coupé', () => {
+    const r = collectReport('Export 📦 échoué %20 日本', [
+      ...bigLog(60, 90),
+      '📦 Paquet prêt — 日本語のテキスト 100%',
+      ...bigLog(60, 90, '日'),
+    ]);
+    for (let max = 300; max <= 6000; max += 37) {
+      const { url, truncated } = buildIssueUrl(REPO, '[bug] 😀 title', r, { maxLength: max });
+      expect(url.length, String(max)).toBeLessThanOrEqual(max);
+      expect(() => decodeURIComponent(url), String(max)).not.toThrow();
+      const text = reportOf(url);
+      if (truncated && max >= 2500) {
+        expect(wellShaped(text), String(max)).toBe(true);
+        const m = /… (\d+) earlier log lines removed/u.exec(text);
+        const kept = text.split('\n').filter((l) => /^line \d{3} /u.test(l) || l.startsWith('📦')).length;
+        expect(Number(m?.[1]) + kept, String(max)).toBe(121);
+      }
+    }
+  });
+
+  it('dernier recours (budget minuscule) : coupe sur caractères entiers, emoji compris', () => {
+    const emo = { ...collectReport('x'), unknowns: ['😀'.repeat(3000)] };
+    for (const max of [400, 401, 402, 403]) {
+      const { url } = buildIssueUrl(REPO, '[bug] x', emo, { maxLength: max });
+      expect(url.length).toBeLessThanOrEqual(max);
+      expect(() => decodeURIComponent(url)).not.toThrow();
+    }
+  });
+
+  it('titre et résumé démesurés bornés', () => {
+    const r = collectReport('b'.repeat(5000));
+    expect(Array.from(r.summary).length).toBeLessThanOrEqual(300);
+    const { url } = buildIssueUrl(REPO, 'a'.repeat(5000), r);
+    expect(new URL(url).searchParams.get('title')?.length).toBeLessThanOrEqual(120);
   });
 });

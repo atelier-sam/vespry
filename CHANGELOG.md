@@ -3,6 +3,25 @@
 Versionnage sémantique (semver). La version affichée dans le header de
 l'overlay et le popup vient de `package.json`.
 
+## Non publié
+
+### Signaler un problème
+- Le bouton ouvre le **formulaire de bug** du dépôt (étiquette `bug` posée
+  d'office), champ « Vespry report » et version préremplis. Rapport en
+  anglais, la langue des tickets publics ; le journal de la tâche reste dans
+  la langue de l'interface.
+- **Longueur bornée** : au-delà de 5 000 caractères d'URL (GitHub répond 500
+  vers 7 300, 414 au-delà de 9 000, mesuré le 09/11/2026), les lignes les
+  plus anciennes du journal puis des erreurs sont retirées, avec une ligne
+  qui le dit. Le rapport complet, masqué de la même façon, est copié dans le
+  presse-papier avant l'ouverture de l'onglet.
+- Ne lève plus jamais : une moitié de paire UTF-16 dans le journal faisait
+  lever `encodeURIComponent` pendant la gestion d'une erreur.
+
+### Dépôt
+- Formulaire de bug, `CONTRIBUTING.md`, modèle de pull request,
+  `docs/maintaining.md` ; modèle d'idées des Discussions en anglais.
+
 ## [1.1.0] — 2026-11-09 — export discret
 
 Depuis mars 2026, Discord sanctionne des comptes qui exportent leur

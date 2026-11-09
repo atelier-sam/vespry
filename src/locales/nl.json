@@ -110,6 +110,7 @@
   "report.this": "Melden",
   "report.copied": "Rapport gekopieerd ✓",
   "report.opened": "Issue geopend ✓",
+  "report.truncated": "Issue geopend · volledig rapport gekopieerd, plak het indien nodig ✓",
   "credits.support": "Steunen",
   "credits.title": "Steun Vespry",
   "credits.intro": "Vespry is gratis en open source. Als het je tijd bespaarde, helpt een koffie het verbeteren.",

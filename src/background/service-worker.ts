@@ -87,7 +87,7 @@ async function syncScheduledAlarm(): Promise<void> {
     await installAlarmFor(chrome.alarms, schedule);
   } catch (e) {
     console.warn('[Vespry] sync alarm a échoué :', e);
-    recordEvent('warn', `syncScheduledAlarm a échoué : ${String(e)}`);
+    recordEvent('warn', `syncScheduledAlarm failed: ${String(e)}`);
   }
 }
 
@@ -187,7 +187,7 @@ async function forwardCommand(command: VespryCommand): Promise<CommandResponse> 
   } catch (e) {
     // L'utilisateur ne pourra plus exporter — c'est critique, on trace pour
     // qu'un rapport remonte la cause exacte (CSP, quota, race au démarrage).
-    recordEvent('error', `ensureOffscreen a échoué : ${String(e)}`);
+    recordEvent('error', `ensureOffscreen failed: ${String(e)}`);
     return { ok: false, error: `offscreen non créé : ${String(e)}` };
   }
   const envelope: ExecEnvelope = { kind: 'vespry-exec', command };
@@ -205,7 +205,7 @@ async function forwardCommand(command: VespryCommand): Promise<CommandResponse> 
     }
     await sleep(400);
   }
-  recordEvent('error', `forwardCommand(${command.cmd}) abandon après 6 tentatives : ${lastError}`);
+  recordEvent('error', `forwardCommand(${command.cmd}) gave up after 6 attempts: ${lastError}`);
   return { ok: false, error: lastError };
 }
 

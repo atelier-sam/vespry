@@ -110,6 +110,7 @@
   "report.this": "Ilmoita",
   "report.copied": "Raportti kopioitu ✓",
   "report.opened": "Issue avattu ✓",
+  "report.truncated": "Ilmoitus avattu · koko raportti kopioitu, liitä se tarvittaessa ✓",
   "credits.support": "Tue",
   "credits.title": "Tue Vespryä",
   "credits.intro": "Vespry on ilmainen ja avoin lähdekoodi. Jos se säästi aikaasi, kahvi auttaa pitämään sen kehittymässä.",

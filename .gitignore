@@ -22,3 +22,11 @@ debug-*.png
 
 # Artefacts de release bâtis par scripts/build-artifacts.sh (livrables locaux).
 release/
+
+# Consignes destinées aux agents de code : restent sur le poste, jamais dans le
+# dépôt public (règle de Sam, 09/11/2026).
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.claude/
+.cursor/

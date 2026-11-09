@@ -356,7 +356,6 @@ npm run firefox:lint     # web-ext lint for AMO
 TypeScript strict, Manifest V3, Vite, Preact. The export engine is covered by
 unit tests: resuming an interrupted export, streaming AES-256, idempotent
 deletion, and a guard that forbids any Discord API call outside the tab.
-Architecture notes: [`CLAUDE.md`](CLAUDE.md).
 
 <br/>
 

@@ -38,6 +38,10 @@ l'overlay et le popup vient de `package.json`.
 - `POST /checkout` accepte une page de retour (`returnUrl`), limitée à
   l'origine exacte d'un projet inscrit : un don à Vespry lancé depuis le site
   y revient au lieu de finir sur les pages du service.
+- Les noms et mots des donateurs perdent leurs caractères invisibles
+  (largeur nulle, inversion de sens d'écriture, remplissages vides) avant
+  d'entrer sur le mur ; une insulte coupée par un invisible ne passe plus le
+  filtre. Les emoji composés restent entiers.
 
 ### Dépôt
 - Formulaire de bug, `CONTRIBUTING.md`, modèle de pull request,

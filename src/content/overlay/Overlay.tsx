@@ -2575,6 +2575,7 @@ function TaskCard({
             summary="Export failed"
             log={item.log}
             names={[item.guildName]}
+            channelNames={item.channelNames ?? []}
             label={t('report.this')}
           />
         )}
@@ -2642,17 +2643,20 @@ function ReportLink({
   log,
   label,
   names = [],
+  channelNames = [],
 }: {
   summary: string;
   log: string[];
   label: string;
   /** Noms à masquer dans le rapport public (nom du serveur). */
   names?: readonly string[];
+  /** Noms exacts des salons de la tâche, masqués en entier. */
+  channelNames?: readonly string[];
 }): JSX.Element {
   const [done, setDone] = useState<'' | ReportOutcome>('');
   function go(e: MouseEvent): void {
     e.stopPropagation();
-    void reportProblem(summary, log, names).then((r) => {
+    void reportProblem(summary, log, names, channelNames).then((r) => {
       setDone(r);
       // Rapport raccourci : laisser le temps de lire qu'il est dans le presse-papier.
       setTimeout(() => setDone(''), r === 'issue-truncated' ? 8000 : 3000);

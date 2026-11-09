@@ -17,6 +17,12 @@ l'overlay et le popup vient de `package.json`.
   presse-papier avant l'ouverture de l'onglet.
 - Ne lève plus jamais : une moitié de paire UTF-16 dans le journal faisait
   lever `encodeURIComponent` pendant la gestion d'une erreur.
+- **Masquage renforcé** (revue du 09/11/2026) : un nom de salon qui contient
+  lui-même « — », « · » ou « … » laissait sa fin en clair ; un serveur nommé
+  `https` désarmait le masquage des liens ; une parenthèse dans un lien en
+  laissait la fin (nom de fichier, paramètres) en clair. Les noms exacts des
+  salons de la tâche sont désormais masqués en entier, et chaque passe du
+  masquage ne peut plus réécrire ce qu'une autre a déjà masqué.
 
 ### Dépôt
 - Formulaire de bug, `CONTRIBUTING.md`, modèle de pull request,

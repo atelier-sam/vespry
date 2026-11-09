@@ -60,6 +60,55 @@ describe('ReportRedactor', () => {
   });
 });
 
+describe('ReportRedactor — noms et liens adverses (revue Codex, 09/11/2026)', () => {
+  const lines = (r: ReportRedactor, xs: string[]): string[] => xs.map((l) => r.line(l));
+
+  it('nom de salon CONNU qui contient un séparateur : masqué en entier', () => {
+    const r = new ReportRedactor([], ['Dossier — Alice Martin', 'Notes · Bob…']);
+    expect(lines(r, [
+      '16:12:22  → #Dossier — Alice Martin…',
+      '16:12:30  ✓ #Dossier — Alice Martin — 2 msg',
+      '16:12:31  #Notes · Bob… · +100 msg',
+    ])).toEqual([
+      '16:12:22  → #channel-1…',
+      '16:12:30  ✓ #channel-1 — 2 msg',
+      '16:12:31  #channel-2 · +100 msg',
+    ]);
+  });
+
+  it('nom de salon INCONNU qui contient un séparateur : le repli ne laisse rien du nom', () => {
+    const r = new ReportRedactor();
+    for (const l of ['→ #Dossier — Alice Martin…', '✓ #Dossier — Alice Martin — 2 msg', '#Notes · Bob · ↓ images: 3']) {
+      const out = r.line(l);
+      expect(out).not.toMatch(/Alice|Martin|Bob|Dossier|Notes/);
+    }
+    // Contrôle positif : le compteur après le dernier séparateur reste lisible.
+    expect(r.line('✓ #Dossier — Alice Martin — 2 msg')).toBe('✓ #channel-1 — 2 msg');
+  });
+
+  it('un serveur nommé « https » ne désarme pas la passe des liens', () => {
+    const out = new ReportRedactor(['https']).line('✗ échec https://cdn.discordapp.com/attachments/1/secret-photo.png?ex=abc');
+    expect(out).toBe('✗ échec <link>');
+    // Contrôle positif : le nom seul, hors lien, est bien masqué.
+    expect(new ReportRedactor(['https']).line('serveur https prêt')).toBe('serveur [server] prêt');
+  });
+
+  it('un serveur nommé « link » ne réécrit pas le jeton <link>', () => {
+    expect(new ReportRedactor(['link']).line('voir https://x.example/a')).toBe('voir <link>');
+  });
+
+  it('parenthèse ou crochet dans un lien : la fin du lien ne reste pas en clair', () => {
+    const r = new ReportRedactor();
+    expect(r.line('err https://example.org/photo).png?token=secret fin')).toBe('err <link> fin');
+    expect(r.line('err https://example.org/a]b?token=secret')).toBe('err <link>');
+  });
+
+  it('une entrée ne peut pas fabriquer un jeton', () => {
+    const out = new ReportRedactor(['Studio Kitsune']).line('a \uE000\uE100\uE001 Studio Kitsune');
+    expect(out).toBe('a \uFFFD\uE100\uFFFD [server]');
+  });
+});
+
 describe('buildReport', () => {
   it('rien d\'identifiant dans le rapport assemblé', () => {
     const body = buildReport('Export échoué', LOG, new ReportRedactor(['Studio Kitsune']));
@@ -81,6 +130,20 @@ describe('reportProblem', () => {
     expect(url).not.toContain('Studio Kitsune');
     expect(url).not.toContain('général');
     expect(url).toContain('[server]');
+  });
+  it('noms exacts des salons transmis : ni l\'URL ni le presse-papier ne portent un nom à séparateur', async () => {
+    const writeText = vi.fn(async (_t: string) => {});
+    const open = vi.fn(() => null);
+    vi.stubGlobal('window', { open });
+    vi.stubGlobal('navigator', { language: 'en', userAgent: 'test', clipboard: { writeText } });
+    const log = ['16:12:22  → #Dossier — Alice Martin…', '16:12:30  ✓ #Dossier — Alice Martin — 2 msg'];
+    await reportProblem('Export failed', log, ['Studio Kitsune'], ['Dossier — Alice Martin']);
+    const url = decodeURIComponent(String((open.mock.calls[0] as unknown[] | undefined)?.[0]));
+    const copied = String(writeText.mock.calls[0]?.[0]);
+    for (const out of [url, copied]) {
+      expect(out).not.toMatch(/Alice|Martin|Dossier/);
+      expect(out).toContain('✓ #channel-1 — 2 msg');
+    }
   });
   it('formulaire bug.yml, champ report, plus de body=', async () => {
     const open = vi.fn(() => null);

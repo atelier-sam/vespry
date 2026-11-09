@@ -46,8 +46,8 @@ function escapeRegExp(text: string): string {
 }
 
 /** Ce qu'un intervalle masqué représente ; l'ordre départage deux intervalles de même largeur. */
-type SpanKind = 'channel' | 'server' | 'link' | 'email' | 'id';
-const SPAN_RANK: Record<SpanKind, number> = { channel: 0, server: 1, link: 2, email: 3, id: 4 };
+type SpanKind = 'channel' | 'server' | 'link' | 'email' | 'emoji' | 'id';
+const SPAN_RANK: Record<SpanKind, number> = { channel: 0, server: 1, link: 2, email: 3, emoji: 4, id: 5 };
 
 interface Span {
   start: number;
@@ -124,29 +124,39 @@ export class ReportRedactor {
         out.push({ start: m.index, end: m.index + m[0].length, kind: 'channel', channel: m[1] ?? '' });
       }
     }
-    // Repli : `#` en début de mot (les titres Markdown `### Journal` restent),
-    // nom jusqu'au DERNIER séparateur de la ligne, sinon jusqu'à la fin. Chaque
-    // modèle du journal écrit UN séparateur après le nom et aucun après : le
-    // dernier est donc le bon, même pour un nom qui en contient. Au pire on
-    // masque aussi un compteur, jamais l'inverse.
-    const fb = /(?<=^|\s)#(?![#\s])(.+)$/u.exec(s);
+    // Repli : premier `#` en début de mot, nom jusqu'au DERNIER séparateur de
+    // la ligne, sinon jusqu'à la fin. Chaque modèle du journal écrit UN
+    // séparateur après le nom et aucun après : le dernier est donc le bon, même
+    // pour un nom qui en contient. Au pire on masque aussi un compteur, jamais
+    // l'inverse. Le nom peut lui-même commencer par `#` ou un blanc (relecture
+    // adverse du 09/11/2026 : `##roadmap-secrète` restait en clair) ; seul un
+    // titre Markdown en tête de ligne (`### Journal`) est épargné.
+    const fb = /^#{1,6}\s/u.test(s) ? null : /(?<=^|\s)#(.+)$/u.exec(s);
     if (fb) {
       const rest = fb[1] ?? '';
       const cut = Math.max(...CHANNEL_END.map((end) => rest.lastIndexOf(end)));
       const name = cut > 0 ? rest.slice(0, cut) : rest;
       out.push({ start: fb.index, end: fb.index + 1 + name.length, kind: 'channel', channel: name });
     }
-    // Liens http(s) jusqu'au prochain blanc ou guillemet : une parenthèse ou un
-    // crochet peut faire partie du chemin. Les chemins chrome-extension:// et
+    // Liens http(s), même collés à un mot, jusqu'au prochain blanc ou chevron :
+    // parenthèse, crochet ou guillemet peuvent faire partie du chemin. Aussi les
+    // liens Discord et `www.` sans schéma. Les chemins chrome-extension:// et
     // moz-extension:// des piles restent.
-    add(/\bhttps?:\/\/[^\s'"`<>]+/giu, 'link');
-    add(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, 'email');
+    add(/https?:\/\/[^\s<>]+/giu, 'link');
+    add(/(?<![\p{L}\p{N}.-])(?:www\.|discord\.gg\/|(?:cdn\.|media\.)?discord(?:app)?\.(?:com|net)\/)[^\s<>]+/giu, 'link');
+    // E-mails, lettres non ASCII comprises. Le regard arrière ne fait démarrer
+    // une adresse qu'en début de suite : sans lui, une longue ligne sans `@`
+    // coûtait un temps quadratique (2 s pour 60 000 caractères).
+    add(/(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu, 'email');
+    // Emoji de serveur dans une route de réaction (`/reactions/nom%3Aid`), que
+    // les erreurs d'arrêt recopient : son nom identifie la communauté.
+    add(/(?<=\/reactions\/)[^/?\s]+/gu, 'emoji');
     // Nom du serveur, partout (occurrences chevauchantes comprises).
     for (const n of this.names) {
       for (let i = s.indexOf(n); i !== -1; i = s.indexOf(n, i + 1)) out.push({ start: i, end: i + n.length, kind: 'server' });
     }
-    // Identifiants Discord (snowflakes, 17 à 20 chiffres).
-    add(/(?<!\d)\d{17,20}(?!\d)/gu, 'id');
+    // Identifiants Discord (snowflakes, 17 chiffres ou plus : deux collés aussi).
+    add(/(?<!\d)\d{17,}(?!\d)/gu, 'id');
     return out;
   }
 
@@ -162,6 +172,7 @@ export class ReportRedactor {
       case 'server': return '[server]';
       case 'link': return '<link>';
       case 'email': return '<e-mail>';
+      case 'emoji': return '<emoji>';
       default: return '<id>';
     }
   }

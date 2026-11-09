@@ -133,6 +133,38 @@ describe('ReportRedactor — noms et liens adverses (revue Codex, 09/11/2026)', 
     expect(r.line('→ #Bob\u2028suite…')).not.toContain('Bob');
   });
 
+  // Relecture adverse (Sonnet, 09/11/2026) : limites antérieures à la fusion d'intervalles.
+  it('salon INCONNU dont le nom commence par # ou un blanc : masqué', () => {
+    for (const name of ['#roadmap-secrète', '#1 Alice Martin', ' Alice Martin', '\u3000Alice', '\u00A0Alice', '##Alice']) {
+      const out = new ReportRedactor().line(`16:12:22  → #${name}…`);
+      expect(out, JSON.stringify(name)).toBe('16:12:22  → #channel-1…');
+    }
+    // Contrôle positif : un titre Markdown en tête de ligne reste.
+    expect(new ReportRedactor().line('### Journal')).toBe('### Journal');
+  });
+
+  it('nom d\'emoji de serveur dans une route de réaction : masqué', () => {
+    const out = new ReportRedactor().line('✗ refus : /channels/1100000000000000001/messages/1100000000000000002/reactions/alice_martin%3A1100000000000000003?limit=100&type=0');
+    expect(out).toBe('✗ refus : /channels/<id>/messages/<id>/reactions/<emoji>?limit=100&type=0');
+  });
+
+  it('liens sans schéma ou collés, e-mails non ASCII, identifiants collés', () => {
+    const r = new ReportRedactor();
+    expect(r.line('voir discord.gg/Xk3J9pQ et www.mon-site.fr/page')).toBe('voir <link> et <link>');
+    expect(r.line('img cdn.discordapp.com/attachments/1/2/moi.png')).toBe('img <link>');
+    expect(r.line('URLhttps://x.fr/a et https://x.fr/Alice\'s-CV.pdf')).toBe('URL<link> et <link>');
+    expect(r.line('écrire à josé@exemple.fr ou 山田@例え.jp')).toBe('écrire à <e-mail> ou <e-mail>');
+    expect(r.line('ids 11000000000000000011100000000000000002')).toBe('ids <id>');
+    // Contrôle positif : une pile d'extension reste lisible.
+    expect(r.line('at f (chrome-extension://abc/assets/x.js:1:2)')).toBe('at f (chrome-extension://abc/assets/x.js:1:2)');
+  });
+
+  it('longue ligne sans @ : masquage en temps linéaire', () => {
+    const t0 = performance.now();
+    new ReportRedactor().line('a'.repeat(200_000));
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+
   it('alias stable entre salon connu et repli pour le même nom', () => {
     const r = new ReportRedactor([], ['général']);
     expect(r.line('→ #général…')).toBe('→ #channel-1…');

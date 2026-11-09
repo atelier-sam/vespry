@@ -27,7 +27,10 @@ l'overlay et le popup vient de `package.json`.
   masqué d'un bloc. Un nom de serveur contenant une adresse ou un lien laissait
   son début en clair ; un salon connu plus court que le vrai nom en laissait la
   fin ; une ligne terminée par un retour chariot (texte CRLF) échappait au
-  masquage des salons.
+  masquage des salons. Sont aussi masqués : un salon dont le nom commence par
+  `#` ou un blanc, le nom d'un emoji de serveur dans une erreur de réaction,
+  les liens Discord ou `www.` sans schéma, les e-mails non ASCII. Une très
+  longue ligne ne bloque plus le rapport (temps linéaire).
 
 ### Dépôt
 - Formulaire de bug, `CONTRIBUTING.md`, modèle de pull request,

@@ -45,16 +45,37 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Ce qu'un intervalle masqué représente ; l'ordre départage deux intervalles de même largeur. */
+type SpanKind = 'channel' | 'server' | 'link' | 'email' | 'id';
+const SPAN_RANK: Record<SpanKind, number> = { channel: 0, server: 1, link: 2, email: 3, id: 4 };
+
+interface Span {
+  start: number;
+  /** Exclu. */
+  end: number;
+  kind: SpanKind;
+  /** Nom du salon (sans `#`), pour l'alias. */
+  channel?: string;
+}
+
+/** Sauts de ligne que `.` ne traverse pas : une « ligne » de rapport n'en contient jamais. */
+const LINE_BREAKS = /\r\n|[\n\r\u2028\u2029]/u;
+
 /**
  * Masque ce qui identifie l'utilisateur dans une ligne de rapport. Une même
  * instance sert tout un rapport : un salon garde le même alias d'une ligne à
  * l'autre (`#channel-1`), pour que le journal reste lisible.
  *
- * Chaque passe remplace ce qu'elle trouve par un JETON opaque (caractères
- * d'usage privé), rendu seulement à la fin : une passe suivante ne peut donc
- * pas réinterpréter ce qu'une précédente a écrit. Revue Codex du 09/11/2026 :
- * un serveur nommé `https` changeait `https://…` en `[server]://…` avant la
- * passe des liens, qui ne le reconnaissait plus et laissait le lien en clair.
+ * Méthode par INTERVALLES : chaque détecteur (salon, lien, e-mail, nom du
+ * serveur, identifiant) cherche sur le texte ORIGINAL, les intervalles qui se
+ * chevauchent sont fusionnés, et chaque groupe est remplacé UNE fois par
+ * l'étiquette la plus forte. Aucun détecteur ne voit donc la sortie d'un autre.
+ * Historique (revues Codex du 09/11/2026) : des passes successives se
+ * désarmaient l'une l'autre. Un serveur nommé `https` cassait les liens ; puis,
+ * avec des jetons, un lien masqué d'abord empêchait de reconnaître le nom
+ * complet du serveur `Alice sam@example.org` (« Alice » restait), et un salon
+ * connu court (`Dossier`) masqué d'abord ôtait le `#` dont le repli avait
+ * besoin pour masquer le vrai nom `Dossier — Alice Martin`.
  */
 export class ReportRedactor {
   private readonly names: string[];
@@ -64,14 +85,14 @@ export class ReportRedactor {
 
   /**
    * `names` : noms à masquer partout (le nom du serveur, en pratique).
-   * `channelNames` : noms EXACTS des salons de la tâche, quand on les a : un
-   * nom qui contient lui-même un séparateur (`Dossier — Alice Martin`) est
-   * alors masqué en entier, sans dépendre de la passe de repli.
+   * `channelNames` : noms EXACTS des salons de la tâche, quand on les a. Ils
+   * s'ajoutent au repli sans jamais le remplacer : si les deux se recouvrent,
+   * l'intervalle le plus LARGE gagne (un nom connu plus court qu'un nom
+   * inconnu ne peut pas en laisser la fin en clair).
    */
   constructor(names: readonly string[] = [], channelNames: readonly string[] = []) {
     // Trop court, un nom masquerait des morceaux de mots ordinaires.
-    this.names = [...new Set(names.map((n) => n.trim()).filter((n) => n.length >= 3))]
-      .sort((a, b) => b.length - a.length);
+    this.names = [...new Set(names.map((n) => n.trim()).filter((n) => n.length >= 3))];
     const exact = [...new Set(channelNames.filter((n) => n.trim().length > 0))]
       .sort((a, b) => b.length - a.length);
     this.knownChannels = exact.length === 0
@@ -91,47 +112,83 @@ export class ReportRedactor {
     return a;
   }
 
-  line(input: string): string {
-    const tokens: string[] = [];
-    const token = (text: string): string => {
-      tokens.push(text);
-      return `\uE000${String.fromCharCode(0xe100 + tokens.length - 1)}\uE001`;
+  /** Tous les intervalles à masquer, cherchés sur le texte original. */
+  private spans(s: string): Span[] {
+    const out: Span[] = [];
+    const add = (re: RegExp, kind: SpanKind): void => {
+      for (const m of s.matchAll(re)) out.push({ start: m.index, end: m.index + m[0].length, kind });
     };
-    // Une entrée ne peut pas fabriquer un jeton.
-    let s = input.replace(/[\uE000\uE001]/gu, '\uFFFD');
-
-    // 1. Salons connus, nom exact, à la place où le journal les écrit.
+    // Salons connus, nom exact, à la place où le journal les écrit.
     if (this.knownChannels) {
-      s = s.replace(this.knownChannels, (_m, name: string) => token(`#${this.alias(name)}`));
-    }
-    // 2. Repli pour un salon inconnu : `#` en début de mot (les titres Markdown
-    //    `### Journal` restent), nom jusqu'au DERNIER séparateur de la ligne,
-    //    sinon jusqu'à la fin. Un nom qui contient un séparateur est ainsi
-    //    masqué en entier ; au pire on masque aussi un compteur, jamais l'inverse.
-    s = s.replace(/(?<=^|\s)#(?![#\s])(.+)$/gu, (_m, rest: string) => {
-      let cut = -1;
-      let sep = '';
-      for (const end of CHANNEL_END) {
-        const i = rest.lastIndexOf(end);
-        if (i > cut) {
-          cut = i;
-          sep = end;
-        }
+      for (const m of s.matchAll(this.knownChannels)) {
+        out.push({ start: m.index, end: m.index + m[0].length, kind: 'channel', channel: m[1] ?? '' });
       }
+    }
+    // Repli : `#` en début de mot (les titres Markdown `### Journal` restent),
+    // nom jusqu'au DERNIER séparateur de la ligne, sinon jusqu'à la fin. Chaque
+    // modèle du journal écrit UN séparateur après le nom et aucun après : le
+    // dernier est donc le bon, même pour un nom qui en contient. Au pire on
+    // masque aussi un compteur, jamais l'inverse.
+    const fb = /(?<=^|\s)#(?![#\s])(.+)$/u.exec(s);
+    if (fb) {
+      const rest = fb[1] ?? '';
+      const cut = Math.max(...CHANNEL_END.map((end) => rest.lastIndexOf(end)));
       const name = cut > 0 ? rest.slice(0, cut) : rest;
-      const tail = cut > 0 ? rest.slice(cut + sep.length) : '';
-      return token(`#${this.alias(name)}`) + (cut > 0 ? sep + tail : '');
-    });
-    // 3. Liens http(s) jusqu'au prochain blanc ou guillemet : une parenthèse
-    //    ou un crochet peut faire partie du chemin (revue Codex, 09/11/2026).
-    //    Les chemins chrome-extension:// et moz-extension:// des piles restent.
-    s = s.replace(/\bhttps?:\/\/[^\s'"`<>]+/giu, () => token('<link>'));
-    s = s.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, () => token('<e-mail>'));
-    // 4. Nom du serveur, partout.
-    for (const n of this.names) s = s.split(n).join(token('[server]'));
-    // 5. Identifiants Discord (snowflakes, 17 à 20 chiffres).
-    s = s.replace(/(?<!\d)\d{17,20}(?!\d)/gu, '<id>');
-    return s.replace(/\uE000([\uE100-\uEFFF])\uE001/gu, (_m, c: string) => tokens[c.charCodeAt(0) - 0xe100] ?? '');
+      out.push({ start: fb.index, end: fb.index + 1 + name.length, kind: 'channel', channel: name });
+    }
+    // Liens http(s) jusqu'au prochain blanc ou guillemet : une parenthèse ou un
+    // crochet peut faire partie du chemin. Les chemins chrome-extension:// et
+    // moz-extension:// des piles restent.
+    add(/\bhttps?:\/\/[^\s'"`<>]+/giu, 'link');
+    add(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, 'email');
+    // Nom du serveur, partout (occurrences chevauchantes comprises).
+    for (const n of this.names) {
+      for (let i = s.indexOf(n); i !== -1; i = s.indexOf(n, i + 1)) out.push({ start: i, end: i + n.length, kind: 'server' });
+    }
+    // Identifiants Discord (snowflakes, 17 à 20 chiffres).
+    add(/(?<!\d)\d{17,20}(?!\d)/gu, 'id');
+    return out;
+  }
+
+  /**
+   * Étiquette d'un groupe fusionné : celle de l'intervalle le plus LARGE (un
+   * serveur `https` dans un lien reste `<link>`, un lien dans le nom d'un
+   * serveur reste `[server]`) ; à largeur égale, l'ordre de `SPAN_RANK`.
+   */
+  private label(group: readonly Span[]): string {
+    const best = [...group].sort((a, b) => (b.end - b.start) - (a.end - a.start) || SPAN_RANK[a.kind] - SPAN_RANK[b.kind])[0];
+    switch (best?.kind) {
+      case 'channel': return `#${this.alias(best.channel ?? '')}`;
+      case 'server': return '[server]';
+      case 'link': return '<link>';
+      case 'email': return '<e-mail>';
+      default: return '<id>';
+    }
+  }
+
+  line(input: string): string {
+    // Une ligne ne contient pas de saut : sinon `.+$` du repli ne verrait rien
+    // (une fin `\r` d'un texte CRLF suffisait à tout laisser en clair).
+    const s = input.split(LINE_BREAKS).join(' ');
+    const spans = this.spans(s).sort((a, b) => a.start - b.start || b.end - a.end);
+    let out = '';
+    let pos = 0;
+    for (let i = 0; i < spans.length;) {
+      const first = spans[i];
+      if (!first) break;
+      const group = [first];
+      let end = first.end;
+      // Fusion de tout ce qui CHEVAUCHE le groupe (deux intervalles contigus restent séparés).
+      for (i += 1; i < spans.length && (spans[i]?.start ?? Infinity) < end; i += 1) {
+        const next = spans[i];
+        if (!next) break;
+        group.push(next);
+        end = Math.max(end, next.end);
+      }
+      out += s.slice(pos, first.start) + this.label(group);
+      pos = end;
+    }
+    return out + s.slice(pos);
   }
 }
 
@@ -178,7 +235,7 @@ export function collectReport(
   // Une ligne de journal peut contenir des retours à la ligne (pile d'erreur) :
   // on découpe AVANT de masquer, puisque le masquage travaille ligne par ligne.
   const red = (xs: readonly string[]): string[] =>
-    xs.flatMap((x) => wellFormed(x).split('\n')).map((l) => redactor.line(l));
+    xs.flatMap((x) => wellFormed(x).split(LINE_BREAKS)).map((l) => redactor.line(l));
   return {
     summary: cut(redactor.line(wellFormed(summary).replace(/\s+/gu, ' ').trim()), SUMMARY_MAX),
     environment: red([

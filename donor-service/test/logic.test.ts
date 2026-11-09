@@ -57,6 +57,31 @@ describe('moderation', () => {
   it('coupe à la longueur maximale', () => {
     expect(cleanText('x'.repeat(500), MAX_MESSAGE)?.length).toBe(MAX_MESSAGE);
   });
+
+  it('retire les invisibles : direction, largeur nulle, BOM, contrôles, remplissages', () => {
+    expect(cleanText('Sam\u202Eevil', MAX_NAME)).toBe('Samevil');
+    expect(cleanText('\u2066Sam\u2069', MAX_NAME)).toBe('Sam');
+    expect(cleanText('S\u200Ba\u200Cm\u2060\uFEFF', MAX_NAME)).toBe('Sam');
+    expect(cleanText('Sa\u00ADm\u0007', MAX_NAME)).toBe('Sam');
+    expect(cleanText('Sam\u200D', MAX_NAME)).toBe('Sam');
+    expect(cleanText('Sam\uE000', MAX_NAME)).toBe('Sam');
+    // Un nom fait seulement d'invisibles n'apparaît pas sur le mur.
+    expect(cleanText('\u3164\u115F\u200B\u202E', MAX_NAME)).toBeNull();
+    // Les blancs de contrôle restent des blancs, compactés.
+    expect(cleanText('Merci\n\tSam', MAX_MESSAGE)).toBe('Merci Sam');
+  });
+
+  it('un invisible ne fait plus passer une insulte', () => {
+    expect(cleanText('f\u200Buck', MAX_MESSAGE)).toBeNull();
+    expect(cleanText('con\u2060nard', MAX_MESSAGE)).toBeNull();
+  });
+
+  it('contrôle positif : les emoji composés gardent leur ZWJ, les accents restent', () => {
+    expect(cleanText('Merci 👨\u200D👩\u200D👧 !', MAX_MESSAGE)).toBe('Merci 👨\u200D👩\u200D👧 !');
+    expect(cleanText('🏳\uFE0F\u200D🌈', MAX_NAME)).toBe('🏳\uFE0F\u200D🌈');
+    expect(cleanText('👍🏽\u200D', MAX_NAME)).toBe('👍🏽');
+    expect(cleanText('Élodie, 日本語, عربي', MAX_NAME)).toBe('Élodie, 日本語, عربي');
+  });
 });
 
 describe('parseKofi', () => {

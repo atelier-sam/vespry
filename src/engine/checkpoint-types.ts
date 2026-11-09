@@ -4,7 +4,7 @@
  * IndexedDB est la source de vérité : chaque lot de 100 messages y est écrit
  * immédiatement, ce qui rend l'export resumable après crash/reboot.
  */
-import type { RawMessage, Snowflake } from './types';
+import type { RawMessage, Snowflake, StopKind } from './types';
 
 export type RunStatus =
   | 'in_progress'
@@ -243,6 +243,13 @@ export interface ExportOptions {
    * dans la UI.
    */
   zipPassword?: string;
+  /**
+   * Le paquet de ce run était chiffré, et son mot de passe a été effacé du
+   * checkpoint une fois le paquet fabriqué (`forgetZipPassword`). Le paquet
+   * ne peut donc plus être refait : `packageRun` refuse plutôt que de sortir
+   * une archive EN CLAIR à la place de l'archive chiffrée demandée.
+   */
+  encrypted?: boolean;
 }
 
 /** Tailles de partition proposées (messages/fichier). 0 = pas de découpage. */
@@ -259,6 +266,14 @@ export interface ExportRun {
   updatedAt: number;
   /** Message d'erreur si `status` vaut `failed`/`paused`. */
   error?: string;
+  /**
+   * Raison d'un arrêt net (`paused`) venu de Discord ou du transport. Seuls
+   * `no-tab` / `no-client` sont repris automatiquement à l'ouverture d'un
+   * onglet Discord ; les autres attendent un geste de l'utilisateur.
+   * Remis à `undefined` à chaque reprise, pour qu'une raison périmée ne
+   * survive pas à une pause ultérieure d'une autre nature (quota).
+   */
+  stopReason?: StopKind | undefined;
 }
 
 /** Progression d'un salon dans un run — porte le curseur de reprise. */

@@ -126,6 +126,18 @@ function wrapLists(lines: string[]): string[] {
 }
 
 /**
+ * Corps d'un bloc ```…``` sans son identifiant de langue. Règle de Discord
+ * (simple-markdown) : un mot seul (`[a-z0-9_+\-.#]`) suivi d'un saut de ligne
+ * en tête du bloc est la langue, pas du code — ```json\n{…}``` n'affiche que
+ * `{…}`. Sans saut de ligne (```json```), le mot reste du code.
+ * Bug vu le 08/11/2026 : « json » s'affichait comme première ligne de code,
+ * dans l'aperçu comme dans l'export HTML.
+ */
+export function codeBlockBody(inner: string): string {
+  return inner.replace(/^[a-z0-9_+\-.#]+?\n/i, '');
+}
+
+/**
  * Rend un contenu de message en HTML : humanize → escape → blocs de code →
  * lignes bloc (titres/citations/listes) → markdown inline → sauts de ligne.
  * Sortie sûre, utilisable en `dangerouslySetInnerHTML`.
@@ -195,7 +207,7 @@ export function renderInlineHtml(
   // opaques, on travaille le reste, puis on les ré-injecte.
   const blocks: string[] = [];
   s = s.replace(/```([\s\S]+?)```/g, (_m, c: string) => {
-    blocks.push(`<pre>${c.trim()}</pre>`);
+    blocks.push(`<pre>${codeBlockBody(c).trim()}</pre>`);
     return `${CODE_PLACEHOLDER}${blocks.length - 1}${CODE_PLACEHOLDER}`;
   });
   const inlines: string[] = [];

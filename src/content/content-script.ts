@@ -2,6 +2,8 @@
  * Content script — monde ISOLATED.
  *
  * 1. Reçoit le jeton du bridge (monde MAIN) et le persiste.
+ * 1 bis. Relaie les requêtes REST du moteur vers l'émetteur du monde MAIN
+ *    (`rest-bridge.ts`) : c'est de CETTE page que partent les requêtes Discord.
  * 2. Injecte le bouton lanceur « Vespry » — qui affiche le % d'un export en cours.
  * 3. Monte/démonte l'overlay (vue Shadow DOM) au clic.
  *
@@ -9,6 +11,9 @@
  * Ce script ne fait que piloter une vue via le RemoteController.
  */
 import { isBridgeTokenMessage, progressPct } from '../messaging';
+import { isRestRelayMessage } from '../engine/transport';
+import { RestPortClient } from './rest-relay';
+import { DISCORD_TAB_READY } from './rest-bridge-protocol';
 import { saveToken } from '../engine/auth';
 import { RemoteController } from '../ui/remote-controller';
 import { installGlobalHandlers } from '../diagnostics';
@@ -26,6 +31,52 @@ window.addEventListener('message', (event: MessageEvent) => {
   void saveToken(event.data.token).catch((e: unknown) => {
     console.error('[Vespry] échec d\'enregistrement du jeton', e);
   });
+});
+
+// --- 1 bis. Relais REST (moteur → cet onglet → monde MAIN) ---
+const restClient = new RestPortClient({ target: window, origin: window.location.origin });
+
+function announceTabReady(): void {
+  chrome.runtime.sendMessage({ kind: DISCORD_TAB_READY }).catch(() => {
+    /* moteur endormi — il interrogera les onglets à son réveil */
+  });
+}
+
+/**
+ * Arrêt `no-client` (client Discord pas encore prêt) : l'onglet se
+ * ré-annonce un peu plus tard, pour que la reprise promise par le message
+ * d'arrêt arrive vraiment (relecture Codex M4, 06/11/2026 : l'annonce n'avait
+ * lieu qu'une fois, à l'ouverture du canal). Rien ne part vers Discord sans
+ * en-têtes du client, la boucle ne coûte donc aucune requête ; elle est
+ * plafonnée quand même.
+ */
+const REANNOUNCE_DELAY_MS = 15_000;
+const REANNOUNCE_MAX = 20;
+let reannounces = 0;
+let reannounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleReannounce(): void {
+  if (reannounceTimer !== null || reannounces >= REANNOUNCE_MAX) return;
+  reannounceTimer = setTimeout(() => {
+    reannounceTimer = null;
+    reannounces += 1;
+    announceTabReady();
+  }, REANNOUNCE_DELAY_MS);
+}
+
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (!isRestRelayMessage(message)) return undefined;
+  void restClient.request(message.req).then((reply) => {
+    if (!reply.ok && reply.failure === 'no-client-headers') scheduleReannounce();
+    sendResponse(reply);
+  });
+  return true; // réponse asynchrone
+});
+
+// Annonce l'onglet au moteur dès que le canal MAIN est ouvert : reprise
+// automatique d'un export en pause « ouvre Discord », tir d'un planifié en attente.
+void restClient.connect().then((port) => {
+  if (port) announceTabReady();
 });
 
 // --- contrôleur de vue (partagé bouton + overlay) ---

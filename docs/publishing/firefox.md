@@ -69,7 +69,9 @@ Vérifications manuelles à faire avant chaque release :
 1. Le bouton « Vespry » apparaît sur https://discord.com.
 2. La connexion à un serveur exporte un salon test.
 3. Pendant un export long, ouvrir et fermer un autre onglet — l'export
-   doit continuer (port `vespry-keepalive` actif).
+   doit continuer (port `vespry-keepalive` actif). Fermer l'onglet Discord :
+   l'export passe en pause (« Ouvre Discord… ») et repart seul à la
+   réouverture.
 4. Tester la pause / reprise (déconnexion / reconnexion Discord).
 5. Le téléchargement du zip fonctionne (popup d'option Firefox).
 
@@ -90,10 +92,10 @@ Vérifications manuelles à faire avant chaque release :
    - Description longue : reprendre `README.md` (section pitch + features).
    - Catégorie : `Tabs` ou `Other`.
    - Tags : `discord`, `export`, `backup`, `ai`.
-   - Captures d'écran : `docs/screenshots/*.png`.
+   - Captures d'écran : `docs/screenshots/en/*.png` (`fr/` pour la fiche française).
    - Site dev : `https://github.com/atelier-sam/vespry`.
-   - Politique de confidentialité — URL ou texte. Voir section dédiée
-     `README.md` → Confidentialité, à reprendre intégralement.
+   - Politique de confidentialité — coller le texte de `PRIVACY.en.md`
+     (AMO l'affiche tel quel), ou l'URL `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md`.
 5. Choix licence : MIT (déjà déclaré dans le repo).
 
 ### Mises à jour

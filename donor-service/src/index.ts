@@ -3,7 +3,9 @@
  *
  * Routes :
  *   GET  /donors           → flux public (DonorFeed), CORS ouvert, cache 60 s.
+ *                            `?project=<id>` : mur d'un autre projet (défaut vespry).
  *   POST /checkout         → crée une session Stripe Checkout → { url }.
+ *                            `project` (facultatif, liste fermée de projects.ts).
  *   POST /stripe/webhook   → ingestion Stripe (auth : signature HMAC).
  *   GET  /checkout/success → page de retour (don réussi).
  *   GET  /checkout/cancel  → page de retour (don annulé).
@@ -19,7 +21,9 @@ import { getFeed, hideDonor, insertDonor, listAll } from './donors';
 import { parseGithub, verifyGithubSignature } from './github';
 import { parseKofi } from './kofi';
 import { cleanText, MAX_MESSAGE, MAX_NAME } from './moderation';
+import { DEFAULT_CENTS, donatePage, parseDonateForm, presetFromQuery } from './donate-page';
 import { cancelPage, successPage } from './pages';
+import { DEFAULT_PROJECT, resolveProject } from './projects';
 import { handleSchemaReport } from './schema-reports';
 import {
   createCheckoutSession,
@@ -87,6 +91,8 @@ async function handleKofi(req: Request, env: Env): Promise<Response> {
     message: payload.isPublic ? cleanText(payload.message, MAX_MESSAGE) : null,
     isPublic: payload.isPublic,
     createdAt: Date.parse(payload.timestamp) || Date.now(),
+    // Ko-Fi ne dit pas quel projet est soutenu : la page mène à Vespry.
+    project: DEFAULT_PROJECT,
   });
   return json({ ok: true });
 }
@@ -111,6 +117,8 @@ async function handleGithub(req: Request, env: Env): Promise<Response> {
     message: null,
     isPublic: sponsorship.isPublic,
     createdAt: sponsorship.createdAt,
+    // Idem GitHub Sponsors : le bouton Sponsor est celui du dépôt Vespry.
+    project: DEFAULT_PROJECT,
   });
   return json({ ok: true });
 }
@@ -125,10 +133,13 @@ async function handleCheckout(req: Request, env: Env): Promise<Response> {
     donorName?: unknown;
     message?: unknown;
     isPublic?: unknown;
+    project?: unknown;
   } | null;
   if (!parsed || !validAmount(parsed.amountCents)) {
     return json({ error: 'invalid amount' }, 400);
   }
+  const project = resolveProject(parsed.project);
+  if (!project) return json({ error: 'unknown project' }, 400);
   const isPublic = parsed.isPublic === true;
   const url = await createCheckoutSession(env.STRIPE_SECRET_KEY, {
     amountCents: parsed.amountCents,
@@ -143,9 +154,54 @@ async function handleCheckout(req: Request, env: Env): Promise<Response> {
         : null,
     isPublic,
     origin: new URL(req.url).origin,
+    project,
   });
   if (!url) return json({ error: 'stripe error' }, 502);
   return json({ url });
+}
+
+const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8' };
+
+/** Flux du mur pour la page de don ; une panne de D1 ne doit pas la casser. */
+async function feedOrNull(env: Env): Promise<Awaited<ReturnType<typeof getFeed>> | null> {
+  try {
+    // La page /donate est celle de Vespry : elle montre son mur.
+    return await getFeed(env.DB, DEFAULT_PROJECT);
+  } catch {
+    return null;
+  }
+}
+
+/** `GET /donate` : page de don publique (lien du README et bouton Sponsor de GitHub). */
+async function handleDonatePage(req: Request, env: Env): Promise<Response> {
+  const page = donatePage(req, await feedOrNull(env), {
+    selectedCents: presetFromQuery(new URL(req.url)),
+  });
+  return new Response(page, { headers: { ...HTML_HEADERS, 'Cache-Control': 'public, max-age=60' } });
+}
+
+/**
+ * `POST /donate` : formulaire de la page publique. Crée la session Stripe et
+ * redirige (303) ; montant invalide ou Stripe en panne → la page revient avec
+ * un message, sans rien perdre de ce qui a été choisi.
+ */
+async function handleDonateSubmit(req: Request, env: Env): Promise<Response> {
+  const form = await req.formData().catch(() => null);
+  const parsed = form ? parseDonateForm(form) : null;
+  const retry = async (status: number): Promise<Response> =>
+    new Response(
+      donatePage(req, await feedOrNull(env), { selectedCents: parsed?.amountCents ?? DEFAULT_CENTS, error: true }),
+      { status, headers: HTML_HEADERS },
+    );
+  if (!parsed) return retry(400);
+  if (!env.STRIPE_SECRET_KEY) return retry(503);
+  const url = await createCheckoutSession(env.STRIPE_SECRET_KEY, {
+    ...parsed,
+    origin: new URL(req.url).origin,
+    via: 'web',
+  });
+  if (!url) return retry(502);
+  return Response.redirect(url, 303);
 }
 
 /** Ingestion d'un don Stripe confirmé (`checkout.session.completed`). */
@@ -165,6 +221,7 @@ async function handleStripeWebhook(req: Request, env: Env): Promise<Response> {
     message: event.isPublic ? cleanText(event.message, MAX_MESSAGE) : null,
     isPublic: event.isPublic,
     createdAt: Date.now(),
+    project: event.project,
   });
   return json({ ok: true });
 }
@@ -203,7 +260,9 @@ export default {
     const { pathname } = new URL(req.url);
 
     if (req.method === 'GET' && pathname === '/donors') {
-      return json(await getFeed(env.DB), 200, {
+      const project = resolveProject(new URL(req.url).searchParams.get('project'));
+      if (!project) return json({ error: 'unknown project' }, 400);
+      return json(await getFeed(env.DB, project.id), 200, {
         'Cache-Control': 'public, max-age=60',
       });
     }
@@ -218,6 +277,12 @@ export default {
       // CORS pour permettre l'envoi depuis l'offscreen de l'extension.
       Object.entries(CORS).forEach(([k, v]) => res.headers.set(k, v));
       return res;
+    }
+    if (req.method === 'GET' && pathname === '/donate') {
+      return handleDonatePage(req, env);
+    }
+    if (req.method === 'POST' && pathname === '/donate') {
+      return handleDonateSubmit(req, env);
     }
     if (req.method === 'POST' && pathname === '/checkout') {
       return handleCheckout(req, env);

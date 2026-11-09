@@ -1,7 +1,7 @@
 {
   "name": "vespry-discord-export",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Vespry — crash-proof, AI-ready Discord chat exporter (Chrome, Edge, Firefox).",
   "license": "MIT",
   "author": {
@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@transcend-io/conflux": "^4.1.0",
-    "@zip.js/zip.js": "^2.8.26",
+    "@zip.js/zip.js": "2.8.26",
     "idb": "^8.0.0",
     "preact": "^10.25.4"
   },
@@ -48,7 +48,7 @@
     "playwright": "^1.60.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
-    "vitest": "^3.0.2",
+    "vitest": "^4.1.12",
     "web-ext": "^10.1.0"
   },
   "_overrides_note": "Force rollup >= 2.80.0 sur tous les paths transitifs (audit /cso 2026-05-19, finding #2 MEDIUM). @crxjs/vite-plugin et @preact/preset-vite tiraient rollup 2.79.2 qui a un CVE path-traversal au build. Build-time only, on patche pour avoir un audit clean.",

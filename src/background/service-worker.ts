@@ -20,7 +20,14 @@ import {
   type VespryState,
 } from '../messaging';
 import { getToken } from '../engine/auth';
+import { isRestRelayMessage } from '../engine/transport';
+import { chromeTabApi, relayRestToTab } from './tab-relay';
+import { DISCORD_TAB_READY } from '../content/rest-bridge-protocol';
+import { SCHEDULE_NO_TAB, markPending, takePending } from '../engine/scheduled-pending';
+import { GET_PACE_KIND, PACE_STORAGE_KEY, readPace } from '../engine/pace-setting';
 import { installGlobalHandlers, recordEvent } from '../diagnostics';
+import { isSchemaReportMessage, maybeSendSchemaReport } from '../engine/schema-report';
+import { loadCredits } from '../credits';
 import {
   SCHEDULE_STORAGE_KEY,
   SCHEDULED_EXPORT_ALARM_NAME,
@@ -138,6 +145,13 @@ async function onScheduledAlarmFire(): Promise<void> {
     await chrome.storage.local.set({
       'vespry.scheduled': { ...schedule, lastFiredAt: Date.now() },
     });
+  } else if (result.error === SCHEDULE_NO_TAB) {
+    // Aucun onglet Discord : rien ne peut partir. En attente jusqu'à
+    // l'ouverture d'un onglet (`discord-tab-ready`).
+    await markPending(chrome.storage.local, {
+      guildId: schedule.guildId, guildName: schedule.guildName, since: Date.now(),
+    });
+    notify('Export planifié en attente', `${schedule.guildName} : ouvre Discord pour le lancer.`);
   } else {
     // Échec non bloquant : la prochaine occurrence (24h / 7j) retentera.
     // Une notification informe l'utilisateur — il peut avoir besoin de se
@@ -146,6 +160,19 @@ async function onScheduledAlarmFire(): Promise<void> {
       'Export planifié — impossible',
       `${schedule.guildName} : ${result.error ?? 'erreur inconnue'}. Ouvre Discord pour réessayer.`,
     );
+  }
+}
+
+/** Onglet Discord prêt : reprises automatiques côté moteur + planifié en attente. */
+async function onDiscordTabReady(): Promise<void> {
+  await forwardCommand({ cmd: 'discord-tab-ready' });
+  const pending = await takePending(chrome.storage.local);
+  if (!pending) return;
+  const result = await forwardCommand({
+    cmd: 'scheduled-export-fire', guildId: pending.guildId, guildName: pending.guildName,
+  });
+  if (!result.ok && result.error === SCHEDULE_NO_TAB) {
+    await markPending(chrome.storage.local, pending); // toujours pas prêt : on garde
   }
 }
 
@@ -284,7 +311,32 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  // Requête REST du moteur (offscreen) : relayée à un onglet discord.com, d'où
+  // elle part réellement. L'offscreen n'a pas `chrome.tabs`.
+  if (isRestRelayMessage(message)) {
+    void relayRestToTab(chromeTabApi, message.req).then(sendResponse);
+    return true;
+  }
+  if (typeof message === 'object' && message !== null
+    && (message as { kind?: unknown }).kind === DISCORD_TAB_READY) {
+    // Un onglet Discord vient de s'ouvrir : le moteur reprend ce qui attendait
+    // un onglet (export en pause « no-tab », planifié en attente).
+    void onDiscordTabReady();
+    return false;
+  }
+  if (typeof message === 'object' && message !== null
+    && (message as { kind?: unknown }).kind === GET_PACE_KIND) {
+    // L'offscreen n'a pas chrome.storage — on lit le rythme pour lui.
+    readPace(chrome.storage.local).then((mode) => sendResponse({ mode })).catch(() => {
+      sendResponse({ mode: null });
+    });
+    return true;
+  }
   if (isCommandEnvelope(message)) {
+    if (message.command.cmd === 'set-pace') {
+      // Persisté ici : l'offscreen n'a pas chrome.storage.
+      void chrome.storage.local.set({ [PACE_STORAGE_KEY]: message.command.mode });
+    }
     forwardCommand(message.command).then(sendResponse).catch((e: unknown) => {
       sendResponse({ ok: false, error: String(e) });
     });
@@ -297,7 +349,18 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     return false;
   }
   if (isDoDownload(message)) {
-    void chrome.downloads.download({ url: message.url, filename: message.filename });
+    // Réponse après le lancement : l'offscreen libère l'URL du blob ensuite.
+    chrome.downloads.download({ url: message.url, filename: message.filename })
+      .then(() => sendResponse({ ok: true }))
+      .catch((e: unknown) => sendResponse({ ok: false, error: String(e) }));
+    return true;
+  }
+  if (isSchemaReportMessage(message)) {
+    // L'offscreen n'a pas chrome.storage : l'opt-in se lit ici. L'URL du
+    // service vient des crédits, jamais du message.
+    void loadCredits()
+      .then((c) => maybeSendSchemaReport(c.donorApiUrl, message.fields))
+      .catch(() => { /* crédits illisibles — sans gravité */ });
     return false;
   }
   if (isGetToken(message)) {

@@ -65,7 +65,7 @@ export default defineManifest({
   permissions: [
     'storage',
     'unlimitedStorage', // IndexedDB stocke les blobs média — quota levé
-    'tabs', // ouvrir/activer l'onglet Discord depuis le popup
+    'tabs', // trouver l'onglet Discord (relais des requêtes) et l'ouvrir depuis le popup
     'offscreen', // document offscreen qui héberge le moteur d'export
     'notifications', // notifier fin d'export / session expirée
     'downloads', // déclencher le téléchargement du zip

@@ -46,8 +46,11 @@ import { encryptZipBlob } from './encrypt-zip';
 import { t } from '../ui/i18n';
 import type { RawMessage } from './types';
 
-/** Construit le jeu de libellés traduits injectés dans les fichiers exportés. */
-function buildLabels(): ExportLabels {
+/**
+ * Construit le jeu de libellés traduits injectés dans les fichiers exportés.
+ * Exporté pour le harnais de captures (rendu fidèle dans chaque langue).
+ */
+export function buildLabels(): ExportLabels {
   return {
     messages: t('exp.messages'),
     edited: t('exp.edited'),
@@ -102,6 +105,53 @@ function partitionMessages(messages: RawMessage[], size: number): RawMessage[][]
 function safeName(s: string): string {
   const cleaned = s.replace(/[^\w\-. ]/gu, '_').trim().replace(/\s+/g, ' ');
   return cleaned.slice(0, 100) || 'x';
+}
+
+/**
+ * Attribue des noms uniques dans le zip.
+ *
+ * Pourquoi : conflux refuse une entrée dont le chemin existe déjà (« File
+ * already exists ») et le paquet entier échoue. Or les homonymes sont la
+ * norme sur Discord : toutes les captures collées s'appellent `image.png`,
+ * et deux catégories ont souvent chacune leur salon « général ». La
+ * comparaison ignore la casse, parce que macOS et Windows décompressent
+ * sur des systèmes de fichiers insensibles à la casse.
+ *
+ * Le premier venu garde son nom ; les suivants prennent `-2`, `-3`…
+ * avant l'extension (`image-2.png`).
+ */
+export class ZipNameAllocator {
+  private readonly used = new Set<string>();
+
+  /**
+   * @param name chemin ou nom à réserver.
+   * @param keepExtension `true` : le suffixe se place avant la dernière
+   *   extension du dernier segment ; `false` : en fin de nom (un nom de
+   *   salon comme `général.croquis` n'a pas d'extension).
+   */
+  claim(name: string, keepExtension = true): string {
+    const slash = name.lastIndexOf('/');
+    const dot = name.lastIndexOf('.');
+    const cut = keepExtension && dot > slash + 1 ? dot : name.length;
+    const stem = name.slice(0, cut);
+    const ext = name.slice(cut);
+    let candidate = name;
+    for (let n = 2; this.used.has(candidate.toLowerCase()); n += 1) {
+      candidate = `${stem}-${n}${ext}`;
+    }
+    this.used.add(candidate.toLowerCase());
+    return candidate;
+  }
+}
+
+/**
+ * Nom de base des fichiers d'un salon. Un nom qui finit par `.partN`
+ * imiterait le fichier d'une partition d'un autre salon (`général.part1.json`) :
+ * on le décale d'un `_`.
+ */
+function channelBaseName(raw: string): string {
+  const name = safeName(raw);
+  return /\.part\d+$/i.test(name) ? `${name}_` : name;
 }
 
 /**
@@ -171,9 +221,9 @@ const CHANNEL_TYPE_NAMES: Record<number, string> = {
 };
 
 /**
- * URL du schéma JSON publié (placeholder — à mettre derrière une vraie
- * page une fois v0.1.0 publiée). Inclus dans chaque fichier JSON pour
- * permettre à un agent IA / outil de validation de connaître le contrat.
+ * Documentation du format (`docs/SCHEMA.md`, à tenir à jour avec ce
+ * fichier). Incluse dans chaque fichier JSON pour qu'un agent IA ou un outil
+ * sache lire le contrat.
  */
 const JSON_SCHEMA_URL = 'https://github.com/atelier-sam/vespry/blob/main/docs/SCHEMA.md';
 
@@ -323,6 +373,19 @@ function jsonMessage(msg: RawMessage, urlToPath: Map<string, string>): string {
     .replace(/\n/g, '\n    ');
 }
 
+/**
+ * Le paquet d'un run chiffré ne peut plus être refait : son mot de passe a
+ * été effacé du checkpoint après la première fabrication (cf.
+ * `CheckpointStore.forgetZipPassword`). L'appelant affiche « relancer
+ * l'export » ; jamais une archive en clair à la place.
+ */
+export class ZipPasswordGoneError extends Error {
+  constructor(runId: string) {
+    super(`Archive chiffrée du run ${runId} : mot de passe effacé, paquet non reconstructible`);
+    this.name = 'ZipPasswordGoneError';
+  }
+}
+
 /** Construit le paquet zip agent-ready pour un run. */
 export async function packageRun(
   store: CheckpointStore,
@@ -331,6 +394,7 @@ export async function packageRun(
 ): Promise<PackageResult> {
   const run = await store.getRun(runId);
   if (!run) throw new Error(`run introuvable : ${runId}`);
+  if (run.options.encrypted && !run.options.zipPassword) throw new ZipPasswordGoneError(runId);
   const channels = await store.getChannels(runId);
   const assets = await store.getAssets(runId);
 
@@ -339,19 +403,20 @@ export async function packageRun(
   const profile = opts.profile ?? detectPerfProfile();
 
   const channelSlug = new Map<string, string>();
+  const slugNames = new ZipNameAllocator();
   for (const ch of channels) {
     // Threads (types 10/11/12) et posts de forum (parent_id présent) :
     // préfixer le nom du fichier par celui du salon parent quand on le
     // trouve dans le run. Permet à un utilisateur qui décompresse
-    // d'avoir « général.questions-sam.json » au lieu d'un fichier
-    // orphelin « questions-sam.json ». DCE le fait optionnellement,
+    // d'avoir « général.croquis.json » au lieu d'un fichier
+    // orphelin « croquis.json ». DCE le fait optionnellement,
     // Vespry l'applique systématiquement.
     const isThread = ch.type === 10 || ch.type === 11 || ch.type === 12;
     if (isThread && ch.category) {
       // category = nom du parent quand on l'a stocké (cf. planGuildExport)
-      channelSlug.set(ch.channelId, safeName(`${ch.category}.${ch.name}`));
+      channelSlug.set(ch.channelId, slugNames.claim(channelBaseName(`${ch.category}.${ch.name}`), false));
     } else {
-      channelSlug.set(ch.channelId, safeName(ch.name));
+      channelSlug.set(ch.channelId, slugNames.claim(channelBaseName(ch.name), false));
     }
   }
 
@@ -362,11 +427,14 @@ export async function packageRun(
   let assetsDownloaded = 0;
   let assetsFailed = 0;
 
+  const assetNames = new ZipNameAllocator();
   for (const asset of assets) {
     if (asset.status === 'failed') assetsFailed += 1;
     if (asset.status !== 'done' || !asset.blob) continue;
+    // Même URL déjà rangée (média cité deux fois) : un seul fichier suffit.
+    if (urlToPath.has(asset.url)) continue;
     const slug = channelSlug.get(asset.channelId) ?? 'unknown';
-    const path = `${KIND_DIR[asset.kind]}/${slug}/${safeName(asset.filename)}`;
+    const path = assetNames.claim(`${KIND_DIR[asset.kind]}/${slug}/${safeName(asset.filename)}`);
     urlToPath.set(asset.url, path);
     assetEntries.push({ path, blob: asset.blob });
     assetsDownloaded += 1;
@@ -747,6 +815,17 @@ async function* generateFormat(args: {
   if (acc.length > 0) yield flush(acc);
 }
 
+/**
+ * INDEX.md du zip — mode d'emploi + table des salons, dans la langue de
+ * l'interface (même `t()` que les libellés `exp.*` des exports).
+ *
+ * Les TEXTES passent par les clés `idx.*` ; ce qui est un contrat du
+ * format reste ici, en dur : l'ossature Markdown, les noms de dossiers
+ * (`json/`, `media/`…) et de champs (`localPath`, `message_reference`…)
+ * que `locales.test.ts` vérifie présents dans chaque traduction, et l'URL
+ * de `docs/SCHEMA.md` (même constante que le `$schema` des JSON). Un agent
+ * IA qui lit l'INDEX doit retrouver les mêmes noms quelle que soit la langue.
+ */
 function buildIndex(
   guild: string,
   stats: ChannelStat[],
@@ -754,28 +833,24 @@ function buildIndex(
   assets: number,
 ): string {
   const lines = [
-    `# Export Discord — ${guild}`,
+    `# ${t('idx.title', { guild })}`,
     '',
-    `- Salons : **${stats.length}**`,
-    `- Messages : **${totalMessages}**`,
-    `- Médias téléchargés : **${assets}**`,
+    `- ${t('idx.channels')} **${stats.length}**`,
+    `- ${t('idx.messages')} **${totalMessages}**`,
+    `- ${t('idx.media_downloaded')} **${assets}**`,
     '',
-    '## Comment lire',
+    `## ${t('idx.how_title')}`,
     '',
-    '- `html/<salon>.html` — page lisible façon Discord, à ouvrir dans un',
-    '  navigateur.',
-    '- `json/<salon>.json` — un fichier par salon, messages chronologiques.',
-    "  Chaque message : `id`, `timestamp`, `author`, `content`, `attachments`,",
-    '  `embeds`, `reactions`, `mentions`, `message_reference` (= réponse à un',
-    "  message d'origine). Les médias téléchargés portent un champ `localPath`.",
-    '- `csv/<salon>.csv` — tableur. `txt/<salon>.txt` — texte brut.',
-    '- `media/` images · `video/` vidéos · `audio/` audio · `files/` autres',
-    '  fichiers — rangés par salon.',
-    '- `manifest.json` — statistiques.',
+    `- ${t('idx.read_html')}`,
+    `- ${t('idx.read_json')}`,
+    `- ${t('idx.read_tabular')}`,
+    `- ${t('idx.read_media')}`,
+    `- ${t('idx.read_manifest')}`,
+    `- ${t('idx.read_schema', { url: JSON_SCHEMA_URL })}`,
     '',
-    '## Salons',
+    `## ${t('idx.channels_title')}`,
     '',
-    '| Salon | Messages | Médias | Fichiers |',
+    `| ${t('idx.col_channel')} | ${t('idx.col_messages')} | ${t('idx.col_media')} | ${t('idx.col_files')} |`,
     '|---|--:|--:|---|',
     ...stats.map(
       (c) =>

@@ -16,8 +16,9 @@ import {
   type VespryState,
 } from '../messaging';
 import type { MediaSelection } from '../engine/checkpoint-types';
-import type { RawChannel, RawGuild, RawMessage, Snowflake } from '../engine/types';
+import type { RawChannel, RawGuild, RawMessage, Snowflake, StopKind } from '../engine/types';
 import type { DonorFeed } from '../donors';
+import type { PaceMode } from '../engine/pacer';
 
 const EMPTY: VespryState = {
   ready: false,
@@ -26,6 +27,8 @@ const EMPTY: VespryState = {
   guilds: [],
   queue: [],
   purgeQueue: [],
+  pace: 'discreet',
+  halt: null,
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -110,6 +113,9 @@ export class RemoteController {
   get queue(): QueueItemView[] { return this.state.queue; }
   /** File des opérations de purge (Phase 2). */
   get purgeQueue(): PurgeItemView[] { return this.state.purgeQueue; }
+  get pace(): PaceMode { return this.state.pace ?? 'discreet'; }
+  /** Verrou d'arrêt du moteur (refus de Discord), cf. `VespryState.halt`. */
+  get halt(): StopKind | null { return this.state.halt ?? null; }
 
   subscribe(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -158,9 +164,24 @@ export class RemoteController {
    * d'afficher la modale « gros export ». `null` si toutes les
    * recherches ont échoué. Cf. controller.ts.estimateMessages.
    */
-  async estimate(guildId: string, channelIds: string[]): Promise<number | null> {
+  async estimate(
+    guildId: string,
+    channelIds: string[],
+  ): Promise<{ total: number | null; stop: StopKind | null }> {
     const r = await this.send({ cmd: 'estimate', guildId, channelIds });
-    return r.estimatedTotal ?? null;
+    return { total: r.estimatedTotal ?? null, stop: r.estimateStop ?? null };
+  }
+
+  /**
+   * Lève le verrou d'arrêt (bouton « Reprendre » du bandeau). Les tâches en
+   * pause ne repartent pas pour autant : chacune a son propre bouton.
+   */
+  async clearHalt(): Promise<void> {
+    const r = await this.send({ cmd: 'clear-halt' });
+    if (r.state) {
+      this.state = r.state;
+      this.notify();
+    }
   }
 
   /** Historique des runs (popup → section Historique). */
@@ -255,6 +276,16 @@ export class RemoteController {
       messageIds,
     });
     return r.purgeRunId ?? null;
+  }
+
+  /**
+   * Change le rythme. Le service worker (ou le background Firefox) le
+   * persiste sous `vespry.pace` et le moteur l'applique dès la requête
+   * suivante ; l'état diffusé ensuite porte le nouveau `pace`.
+   */
+  async setPace(mode: PaceMode): Promise<boolean> {
+    const r = await this.send({ cmd: 'set-pace', mode });
+    return r.ok !== false;
   }
 
   private async send(command: VespryCommand): Promise<CommandResponse> {

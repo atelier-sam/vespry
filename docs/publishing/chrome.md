@@ -41,22 +41,24 @@ données utilisateur ». Voici les justifications correspondant à `manifest.ts`
 |---|---|
 | `storage` | Stocke les préférences de l'utilisateur (thème, mode Avancé, template de nom de fichier zip, planning d'export) et le jeton de session Discord capté pour les appels API d'export. |
 | `unlimitedStorage` | IndexedDB stocke les blobs des médias téléchargés pendant un export — un gros serveur peut dépasser les 100 Mo du quota par défaut, ce qui ferait crasher l'export. |
-| `tabs` | Ouvre / active l'onglet Discord depuis le popup quand l'utilisateur clique « Ouvrir Discord ». |
-| `offscreen` | Héberge le moteur d'export dans un document offscreen tab-indépendant — sans cette permission, l'export s'interromprait dès que l'onglet Discord est fermé. |
+| `tabs` | Trouve l'onglet discord.com ouvert pour lui confier les requêtes d'export (elles partent de la page, par le client Discord), et ouvre / active cet onglet depuis le popup. Aucun autre onglet n'est lu. |
+| `offscreen` | Héberge le moteur d'export (checkpoint, reprise, assemblage du zip) dans un document offscreen : un rechargement de la page Discord n'interrompt pas l'export. Le moteur n'émet aucune requête vers Discord lui-même. |
 | `notifications` | Avertit l'utilisateur quand un export se termine, est mis en pause (jeton expiré) ou échoue. Aucune notification non sollicitée. |
 | `downloads` | Déclenche le téléchargement de l'archive `.zip` finale. |
 | `alarms` | Réveille Vespry aux heures programmées par l'utilisateur pour les exports récurrents (mode Avancé → Planification). |
 
 `host_permissions` (`discord.com`, `cdn.discordapp.com`, `media.discordapp.net`) :
-nécessaires pour appeler l'API Discord et télécharger les médias (les CDN
-Discord refusent les requêtes cross-origin sans cette déclaration).
+nécessaires pour injecter le panneau et le relais de requêtes dans la page
+discord.com, et télécharger les médias (les CDN Discord refusent les
+requêtes cross-origin sans cette déclaration).
 
 ## Déclaration d'usage des données utilisateur
 
 Le CWS exige une déclaration explicite (« Privacy practices »). Cocher :
 
-- **Authentication information** — le jeton de session Discord est lu pour
-  appeler l'API au nom de l'utilisateur. Non transmis à un serveur tiers.
+- **Authentication information** — le jeton de session Discord est lu dans
+  la page et gardé localement, pour détecter une reconnexion ; les requêtes
+  partent du client Discord de l'onglet. Jamais transmis à un serveur.
 - **Personal communications** — les messages exportés sont des
   communications personnelles. Restent en local sur l'ordinateur de
   l'utilisateur.
@@ -68,17 +70,15 @@ Ne **pas** cocher :
 - User activity (clics, navigation, etc.).
 - Website content (hors Discord).
 
-URL de la politique de confidentialité : pointer vers la section
-« Confidentialité » du README sur GitHub
-(`https://github.com/atelier-sam/vespry#-confidentialité`), ou copier
-cette section dans une page dédiée si CWS exige une URL distincte.
+URL de la politique de confidentialité : `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md`
+(politique complète en anglais ; la version française `PRIVACY.md` fait foi).
 
 ## Fiche du store
 
 - **Nom court** : `Vespry — Discord Export`
 - **Description courte** (132 caractères max) :
-  `Exporte ton historique Discord — serveurs, salons, DMs — dans un zip,
-  en local. Reprend après crash. 15 langues. Gratuit, open source.`
+  `Exporte ton historique Discord (serveurs, salons, DMs) en zip, en local.
+  Mode discret, reprise après crash, 15 langues. Open source.`
 - **Catégorie** : « Productivité » (sous-cat. « Utilities »).
 - **Langue principale** : `fr` (français), avec la traduction `en` en
   complément (les deux fiches partagent les captures).
@@ -86,7 +86,8 @@ cette section dans une page dédiée si CWS exige une URL distincte.
 ## Captures écran
 
 Cinq captures minimum, **1280 × 800** (recommandé) ou 640 × 400. Reprendre
-celles de `docs/screenshots/` :
+celles de `docs/screenshots/en/` (fiche par défaut, anglais) ; la fiche
+française peut utiliser `docs/screenshots/fr/` :
 
 1. `overlay.png` — l'overlay sur Discord.
 2. `advanced.png` — mode Avancé, filtres, ET / OU.
@@ -109,9 +110,11 @@ PURPOSE: Allow Discord users to export their own message history
 Discord's official "Request Data" feature, but immediate, structured,
 and locally controlled.
 
-DATA HANDLING: 100% local. The Discord session token is read from
-the page and used only to call Discord's own API on behalf of the
-user. No data is ever sent to a third-party server.
+DATA HANDLING: 100% local. Requests to Discord are made from the
+user's own open discord.com tab, through the Discord web client, at a
+human pace (one channel at a time, randomized delays, regular breaks)
+and stop at the first refusal from Discord. The extension itself never
+calls Discord's API. No data is ever sent to a third-party server.
 
 OPTIONAL TELEMETRY: A "schema watch" toggle (default OFF, advanced
 panel) sends ONLY {version, locale, field_names[]} when Discord
@@ -122,9 +125,11 @@ OPTIONAL DONATIONS: Stripe Checkout opens in a popup when user clicks
 "Support" — no card data ever touches Vespry. Donor wall is
 public-only aggregated content from a Cloudflare Worker (no tracking).
 
-DISCLAIMER: Automating a Discord user account is against Discord ToS.
-Tool is for personal use on one's own data, at user's own risk.
-This is stated in the README and in-extension.
+DISCLAIMER: Automating a Discord user account is against Discord ToS,
+and since March 2026 users have reported account penalties after exporting.
+Tool is for personal use on one's own data, at user's own risk. This is
+stated in the README and in a warning shown before the first export, in
+the user's language (15 languages).
 
 The source code is at https://github.com/atelier-sam/vespry (MIT).
 ```

@@ -78,20 +78,22 @@ Avant chaque soumission, vérifier :
        blobs during long exports of large servers (tens of thousands of
        messages, gigabytes of media). The unlimited quota prevents the
        browser from evicting checkpoints mid-export. »
-     - `tabs` : « Opens or activates the Discord tab from the popup. Used
-       only to navigate the user to https://discord.com/ — no inspection
-       of other tabs, no tab content read. »
-     - `offscreen` : « Hosts the export engine in an offscreen document so
-       it survives the user closing the Discord tab. The engine is a
-       resumable, checkpoint-driven worker — it must outlive any single
-       tab. No remote code, no tab content access. »
+     - `tabs` : « Finds the open discord.com tab to hand it the export's
+       requests (they are sent from the page, through the Discord client),
+       and opens or activates that tab from the popup. No other tab is
+       inspected, no other tab content read. »
+     - `offscreen` : « Hosts the export engine (checkpoints, resume, zip
+       packaging) in an offscreen document so a reload of the Discord page
+       does not interrupt the export. The engine never calls Discord's API
+       itself. No remote code, no tab content access. »
      - `notifications` : « Notifies the user when an export finishes, is
        paused, or fails. Local notifications only, no remote service. »
      - `downloads` : « Triggers the final .zip download once the export is
        complete. The user remains in control of the destination folder. »
      - `host_permissions: https://discord.com/*, https://*.discord.com/*` :
-       « Reads the user's Discord session and calls the official Discord
-       API to fetch their own messages. No third-party endpoint. »
+       « Injects the export panel and the request relay into the
+       discord.com page; requests to fetch the user's own messages are sent
+       from that page by the Discord client. No third-party endpoint. »
      - `host_permissions: https://cdn.discordapp.com/*, https://media.discordapp.net/*` :
        « Downloads media (images, videos, attachments) referenced by the
        exported messages so the offline archive remains viewable without
@@ -107,11 +109,9 @@ Avant chaque soumission, vérifier :
      « Limited Use » sont à cocher : Vespry traite ces données **localement,
      uniquement pour la fonction principale (l'export)**, ne les vend pas,
      ne les transfère pas à des tiers.
-   - **Privacy policy URL** : pointer vers une page publique. Deux options :
-     - **Recommandé** : la section « Confidentialité » du README sur GitHub —
-       `https://github.com/atelier-sam/vespry#-confidentialité`. C'est honnête,
-       complet, et déjà rédigé.
-     - Ou héberger une page dédiée sur `https://atelier-sam.github.io/vespry/privacy`.
+   - **Privacy policy URL** : `https://github.com/atelier-sam/vespry/blob/main/PRIVACY.en.md` (politique complète en anglais ;
+     la version française `PRIVACY.md` fait foi). Pas la section du README, qui
+     n'en est qu'un résumé. Pas de page `atelier-sam.github.io` : elle n'existe pas.
 6. **Store listings** (au moins l'anglais) :
    - **Extension name** : `Vespry — Discord Export` (récupéré du manifest).
    - **Description** : reprendre les sections « Vespry » + « Le problème »
@@ -132,9 +132,8 @@ Avant chaque soumission, vérifier :
      Sam veut une mise en avant. Sans, Edge affichera le logo recadré.
    - **Large promotional tile** (optionnel, 1400×560) : idem.
    - **Screenshots** (jusqu'à 6, 640×480 ou 1280×800) : utiliser
-     `docs/screenshots/*.png`. Les sept screenshots du repo sont en
-     1280×800 ou proches — vérifier les dimensions avant l'upload, et
-     redimensionner si besoin. Suggérer dans cet ordre :
+     `docs/screenshots/en/*.png` (anglais ; `fr/` pour la fiche
+     française), toutes en 1280×800 exact. Suggérer dans cet ordre :
      1. `overlay.png` — l'overlay sur Discord (vue principale).
      2. `multi-select.png` — sélection multi-salons.
      3. `advanced.png` — mode avancé.

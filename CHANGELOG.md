@@ -3,6 +3,100 @@
 Versionnage sémantique (semver). La version affichée dans le header de
 l'overlay et le popup vient de `package.json`.
 
+## [1.1.0] — 2026-11-09 — export discret
+
+Depuis mars 2026, Discord sanctionne des comptes qui exportent leur
+historique par jeton utilisateur (déconnexion, restriction, suspension en
+récidive). Vespry émettait ses requêtes depuis l'extension, sans cookies ni
+en-têtes du client, 2 à 3 salons en parallèle et 0,7 s fixe entre deux
+lots : une signature facile à repérer. Ce chantier la retire.
+
+### Mode discret
+- **Requêtes émises depuis l'onglet discord.com**, par le module REST du
+  client Discord (repli : `fetch` même-origine avec les en-têtes que le
+  client a lui-même envoyés, jamais d'en-tête inventé). Plus aucune requête
+  vers l'API Discord ne part de l'extension. Liste blanche des routes
+  appliquée des deux côtés du relais.
+- **Rythme à deux crans**, appliqué à tout (export, comptage, aperçu,
+  suppression) : *Discret* par défaut (un salon à la fois, 1,5 à 3,5 s
+  aléatoires, pause de 8 à 12 min toutes les 40 à 50 min, plafond par
+  session) et *Normal* (deux fois plus rapide) derrière un avertissement.
+- **Arrêt net** au premier signal de Discord (401/403, captcha, page de
+  protection, 429 répétés ou `retry_after` > 60 s) : l'export se met en
+  pause et l'écran dit pourquoi, dans la langue de l'utilisateur. Plus de
+  relance en rafale. Onglet Discord fermé : pause, puis reprise automatique
+  à la réouverture.
+- **Exports planifiés** : partent seulement si un onglet Discord est ouvert,
+  sinon attendent la prochaine ouverture.
+- **Moins de requêtes** : comptage préalable en série, mis en cache 30 min et
+  réutilisé au lancement (avant : refait deux fois, en parallèle).
+
+### Sûreté (relecture croisée Codex)
+- **Un refus arrête tout** : dès que Discord refuse (session, captcha,
+  protection, débit), plus aucune requête ne part, pour aucune tâche
+  (exports en file, suppression parallèle, estimation, fils), y compris
+  celles déjà en attente. Un bandeau dit pourquoi ; lancer et supprimer sont
+  grisés jusqu'au clic sur « Reprendre ».
+- **Une tâche ne change jamais de compte** : chaque requête est liée au
+  compte du début ; un onglet Discord connecté à un autre compte est ignoré,
+  et sans onglet du bon compte la tâche s'arrête. Le compte se vérifie au
+  moment même de l'envoi, sur l'en-tête qui part ; un jeton illisible
+  n'émet rien.
+- **Jamais deux fois la même requête** : ni repli `fetch` après un appel du
+  client resté sans réponse lisible, ni nouvel essai sur un autre onglet
+  quand la liaison casse après l'envoi.
+- `retry_after` de Discord respecté par toute la file, immédiatement (les
+  requêtes déjà en attente ne passent plus devant).
+- Liste blanche des routes durcie : un chemin que l'analyseur d'URL
+  réécrirait (`\`, `%2e`, `%2f`, `%5c`) est refusé. Avant, le segment
+  emoji d'une réaction permettait d'atteindre une autre route.
+- Canal privé entre la page et l'extension : la première poignée de main
+  gagne, et aucun script de la page ne reçoit le port, même s'il remplace
+  les primitives du navigateur après le chargement. Un `ready` en retard
+  n'est plus perdu (le canal restait coupé jusqu'au rechargement).
+- Un refus de Discord pendant le chargement de la session pose aussi le
+  verrou : l'écran le dit, et seul « Reprendre » relance.
+- Arrêt « Discord pas encore chargé » : la reprise automatique arrive
+  vraiment (l'onglet se ré-annonce), et le bouton « Reprendre » reste là.
+- Export planifié en attente : tiré une seule fois même si deux onglets
+  Discord s'ouvrent ensemble.
+
+### Avertissement honnête
+- La modale du premier export disait « rarement sanctionné », faux depuis
+  mars 2026. Réécrite : les sanctions observées, ce que fait Vespry pour les
+  limiter, aucune garantie. Traduite dans les 15 langues (elle était en
+  français seul).
+- La suppression en série rappelle le risque à chaque fois et porte le
+  réglage de rythme.
+- Les textes qui disaient « tu peux fermer l'onglet Discord, l'export
+  continue » sont corrigés (README, tutoriel, modale gros export).
+
+### Dons
+- Un seul canal, Stripe : le panneau Soutiens montre un bouton « Soutenir
+  Vespry » qui ouvre la même modale de paiement que le mur. Avant, deux
+  boutons « Dons bientôt disponibles » désactivés.
+- Retrait du lien GitHub Sponsors, qui menait à un profil jamais activé
+  (`credits.json`, README, bouton Sponsor du dépôt `.github/FUNDING.yml`).
+  Ko-fi et Sponsors restent dormants côté service de dons.
+- Page de dons publique `/donate` (15 langues), pour le README et le
+  bouton Sponsor de GitHub, qui mène au même mur.
+- Service de dons : un mur par projet soutenu (liste fermée des projets,
+  libellé de paiement et paliers propres à chacun). Rien ne change pour
+  l'extension, qui reste sur le mur de Vespry.
+
+### Interne
+- Test de parité des 15 langues (mêmes clés, mêmes variables).
+- Dépendances de développement à jour : vitest 4, vite 6.4.5, web-ext 10.8,
+  @crxjs 2.7, playwright 1.65 ; service de dons : wrangler 4.158, vitest 4,
+  workers-types 5. `npm audit` passe de 26 failles (5 critiques) à 3
+  « faibles » sans correctif publié (deepmerge, via l'outil de lint Firefox,
+  jamais embarqué) ; service de dons : 13 → 0.
+- `scripts/build-artifacts.sh` bâtit les zips des stores depuis le COMMIT
+  exact (`git archive` + `npm ci` + portes + `SHA256SUMS`), plus depuis
+  l'arbre de travail ; il remplace GitHub Actions sur le chemin de release.
+- zip.js reste figé en 2.8.26 : les versions récentes chargent leurs codecs
+  par `import()` dynamique, ce que les stores refusent (code non embarqué).
+
 ## [1.0.0] — 2026-06-07
 
 Première version publique, soumise au Chrome Web Store, à Microsoft Edge

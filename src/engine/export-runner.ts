@@ -25,6 +25,9 @@ import type {
 import {
   ChannelType,
   DiscordApiError,
+  isStopError,
+  stopMessage,
+  type StopKind,
   type RawChannel,
   type RawMessage,
   type Snowflake,
@@ -103,6 +106,19 @@ export interface RunnerOptions {
    * `fast` 3 — c'est le contrôleur qui passe la valeur du profil.
    */
   channelConcurrency?: number;
+  /**
+   * Pré-comptage précis : relance 2 recherches par salon plafonné à 8000
+   * (dichotomie). Désactivé en rythme discret (une recherche par salon, pas
+   * plus : chaque appel `search` compte dans la signature). Défaut true.
+   */
+  preciseCount?: boolean;
+  /**
+   * Comptage déjà connu d'un salon (pré-vol de l'UI, mis en cache) :
+   * `undefined` = inconnu, à chercher ; `null` = recherche déjà tentée et
+   * échouée. Évite de refaire au lancement la recherche que le pré-vol vient
+   * de faire : chaque appel `search` compte dans le volume vu par Discord.
+   */
+  knownCount?: (channelId: Snowflake) => number | null | undefined;
 }
 
 /**
@@ -222,7 +238,7 @@ export class ExportRunner {
   async run(runId: string): Promise<RunStatus> {
     const run = await this.store.getRun(runId);
     if (!run) throw new Error(`run introuvable : ${runId}`);
-    await this.store.patchRun(runId, { status: 'in_progress' });
+    await this.store.patchRun(runId, { status: 'in_progress', stopReason: undefined });
 
     const channels = await this.store.getChannels(runId);
     const pending = channels.filter(
@@ -238,7 +254,13 @@ export class ExportRunner {
     // on sous-estime un peu, mais ça suffit largement à pondérer la barre.
     // Échec d'estimation = on retombe sur le calcul historique côté UI ;
     // pas de blocage du run sur un pré-comptage qui foire.
-    await this.preCount(run.guildId, pending);
+    try {
+      await this.preCount(run.guildId, pending);
+    } catch (e) {
+      if (!isStopError(e)) throw e;
+      await this.pauseForStop(runId, e);
+      return 'paused';
+    }
     // Premier broadcast avec l'estimation totale, AVANT toute pagination —
     // la barre est ainsi prête à afficher du % dès le premier batch.
     if (this.events.onProgress) {
@@ -260,7 +282,16 @@ export class ExportRunner {
       for (;;) {
         const ch = takeNext();
         if (!ch) return;
-        const outcome = await this.runChannel(run, ch);
+        let outcome: 'done' | 'partial' | 'paused';
+        try {
+          outcome = await this.runChannel(run, ch);
+        } catch (e) {
+          // Arrêt net (session, refus, protection, rythme, onglet) venu de
+          // n'importe quel appel du salon : run en pause, curseur intact.
+          if (!isStopError(e)) throw e;
+          await this.pauseForStop(run.id, e);
+          outcome = 'paused';
+        }
         if (outcome === 'paused') {
           // Le premier `paused` arme le drapeau : les autres workers finiront
           // leur salon en cours puis sortiront sans en commencer un nouveau.
@@ -278,7 +309,8 @@ export class ExportRunner {
     await Promise.all(workers);
 
     if (paused) {
-      this.events.onPaused?.('quota ou session — run en pause');
+      const latest = await this.store.getRun(runId);
+      this.events.onPaused?.(latest?.error ?? 'run en pause');
       this.events.onDone?.('paused');
       return 'paused';
     }
@@ -287,6 +319,15 @@ export class ExportRunner {
     await this.store.patchRun(runId, { status: finalStatus });
     this.events.onDone?.(finalStatus);
     return finalStatus;
+  }
+
+  /** Met le run en pause sur un arrêt net, avec sa raison (reprenable). */
+  private async pauseForStop(runId: string, e: DiscordApiError): Promise<void> {
+    await this.store.patchRun(runId, {
+      status: 'paused',
+      error: stopMessage(e.kind),
+      stopReason: e.kind as StopKind,
+    });
   }
 
   /** Traite un salon. Renvoie 'done' | 'partial' | 'paused'. */
@@ -329,13 +370,6 @@ export class ExportRunner {
       try {
         batch = await this.api.getMessages(channel.channelId, cursor ?? undefined);
       } catch (e) {
-        if (e instanceof DiscordApiError && e.kind === 'auth') {
-          await this.store.patchRun(run.id, {
-            status: 'paused',
-            error: 'Session Discord expirée — reconnecte-toi puis reprends',
-          });
-          return 'paused';
-        }
         if (
           e instanceof DiscordApiError
           && (e.kind === 'forbidden' || e.kind === 'not_found')
@@ -439,8 +473,10 @@ export class ExportRunner {
       for (const r of m.reactions ?? []) {
         try {
           r.users = await this.api.getReactions(channelId, m.id, r.emoji);
-        } catch {
-          /* échec ponctuel sur une réaction — sans gravité, on continue */
+        } catch (e) {
+          // Un arrêt net remonte (le run se met en pause) ; un échec ponctuel
+          // sur une réaction n'interrompt pas l'export.
+          if (isStopError(e)) throw e;
         }
       }
     }
@@ -575,7 +611,9 @@ export class ExportRunner {
       this.estimatedMessagesTotal = 0;
       return;
     }
-    const CONCURRENCY = 3;
+    // Le Pacer sérialise de toute façon les requêtes ; on aligne la
+    // concurrence sur celle des salons pour ne pas empiler des attentes.
+    const CONCURRENCY = clampChannelConcurrency(this.options.channelConcurrency ?? 1);
     const counts: (number | null)[] = new Array(pending.length).fill(null);
     let cursor = 0;
     const next = (): number | null => {
@@ -624,10 +662,14 @@ export class ExportRunner {
         ? this.api.searchDmMessageCount(ch.channelId, maxId, minId)
         : this.api.searchMessageCount(guildId, ch.channelId, maxId, minId);
 
-    const initial = await search();
+    const known = this.options.knownCount?.(ch.channelId);
+    const initial = known !== undefined ? known : await search();
     if (initial === null) return null;
     // Seuil 8000 = plafond ES Discord. < 8000 = valeur exacte, on s'arrête.
     if (initial < SEARCH_CAP_THRESHOLD) return initial;
+    // Rythme discret : une seule recherche par salon (sous-estimation acceptée,
+    // corrigée en cours de run par `snapshot()`).
+    if (this.options.preciseCount === false) return initial;
 
     // Plafonné : on cherche le `last_message_id` pour fixer la borne haute,
     // puis on coupe en deux par snowflake midpoint. Si pas de last_msg,
@@ -642,10 +684,8 @@ export class ExportRunner {
     const midId = snowflakeMidpoint(lastId);
     if (!midId) return initial;
 
-    const [oldHalf, newHalf] = await Promise.all([
-      search(midId), // max_id = mid → moitié ancienne (de 0 à mid)
-      search(undefined, midId), // min_id = mid → moitié récente
-    ]);
+    const oldHalf = await search(midId); // max_id = mid → moitié ancienne (de 0 à mid)
+    const newHalf = await search(undefined, midId); // min_id = mid → moitié récente
     if (oldHalf === null && newHalf === null) return initial;
     return (oldHalf ?? 0) + (newHalf ?? 0);
   }

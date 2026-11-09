@@ -15,8 +15,9 @@ import type {
   SelectionZone,
   ZoneMode,
 } from './engine/checkpoint-types';
-import type { RawChannel, RawGuild, RawMessage, Snowflake } from './engine/types';
+import type { RawChannel, RawGuild, RawMessage, Snowflake, StopKind } from './engine/types';
 import type { DonorFeed } from './donors';
+import type { PaceMode } from './engine/pacer';
 
 // --- bridge MAIN → ISOLATED (capture du jeton) ---
 
@@ -90,7 +91,23 @@ export interface QueueItemView {
   assetsByKind: { image: number; video: number; audio: number; file: number };
   reactions: number;
   log: string[];
+  /** Le paquet est en mémoire : téléchargement immédiat. */
   zipReady: boolean;
+  /**
+   * Paquet en cours de fabrication (fin de run, ou demande de téléchargement
+   * d'une tâche reconstruite au démarrage, dont le zip n'est plus en mémoire).
+   */
+  zipPacking: boolean;
+  /**
+   * Paquet impossible à refaire : archive chiffrée dont le mot de passe a été
+   * effacé après la première fabrication. L'UI propose de relancer l'export.
+   */
+  zipUnavailable: boolean;
+  /**
+   * Raison d'un arrêt net (run en pause) : l'UI affiche le message traduit
+   * `stop.<kind>`. Absent pour une pause ordinaire.
+   */
+  stopReason?: StopKind;
 }
 
 /**
@@ -115,6 +132,8 @@ export interface PurgeItemView {
   failed: number;
   /** Lignes de la mini-console (plafonné à 250). */
   log: string[];
+  /** Raison d'un arrêt net (cf. `QueueItemView.stopReason`). */
+  stopReason?: StopKind;
 }
 
 export interface VespryState {
@@ -125,6 +144,13 @@ export interface VespryState {
   queue: QueueItemView[];
   /** File des opérations de purge en cours / terminées (Phase 2). */
   purgeQueue: PurgeItemView[];
+  /** Rythme appliqué par le moteur (réglage « Rythme »). */
+  pace: PaceMode;
+  /**
+   * Verrou d'arrêt : Discord a refusé une requête, plus rien ne part tant que
+   * l'utilisateur n'a pas cliqué « Reprendre » (commande `clear-halt`).
+   */
+  halt: StopKind | null;
 }
 
 // --- commandes vue → offscreen (via le service worker) ---
@@ -212,7 +238,15 @@ export type VespryCommand =
       channelId: Snowflake;
       channelName: string;
       messageIds: Snowflake[];
-    };
+    }
+  /**
+   * Un onglet Discord vient d'ouvrir son canal REST. Le moteur reprend les
+   * runs en pause faute d'onglet et tire un export planifié en attente.
+   */
+  | { cmd: 'discord-tab-ready' }
+  /** Change le rythme des requêtes (réglage « Rythme », persisté côté moteur). */
+  | { cmd: 'set-pace'; mode: PaceMode }
+  | { cmd: 'clear-halt' };
 
 /**
  * Paramètres d'un export passés à `enqueue`, hors guild/channels/media.
@@ -256,6 +290,8 @@ export interface CommandResponse {
    * rate-limit excédé). `0` est une valeur valide (salons vides).
    */
   estimatedTotal?: number | null;
+  /** Arrêt rencontré (ou verrou déjà posé) pendant l'estimation. */
+  estimateStop?: StopKind | null;
   /**
    * Historique des runs précédents (commande `list-runs`) — vue épurée
    * sans les blobs IDB volumineux. Triée du plus récent au plus ancien.

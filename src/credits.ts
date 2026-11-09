@@ -8,7 +8,8 @@
  * Les soutiens eux-mêmes ne sont PAS ici : ils viennent en direct du service
  * `vespry-donors` via `donorApiUrl` (cf. `src/donors.ts`).
  *
- * Champs vides = fonctionnalité non encore configurée (bouton désactivé).
+ * Champs vides = canal non ouvert : son lien n'apparaît pas (Stripe, par
+ * `donorApiUrl`, est le seul canal ouvert au 06/11/2026).
  */
 import bundled from './credits.json';
 import { GITHUB_REPO } from './version';

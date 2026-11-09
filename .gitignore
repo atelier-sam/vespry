@@ -19,3 +19,6 @@ debug-*.png
 /research/
 /tools/
 .gstack/
+
+# Artefacts de release bâtis par scripts/build-artifacts.sh (livrables locaux).
+release/

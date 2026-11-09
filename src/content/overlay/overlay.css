@@ -608,7 +608,11 @@
 .v-bar > i { display: block; height: 100%; background: var(--accent); transition: width .3s ease; }
 .v-bar > i.ok { background: var(--green); }
 .v-exp { color: var(--muted); cursor: pointer; font: 600 12px var(--font); white-space: nowrap;
-  display: flex; align-items: center; gap: 4px; }
+  display: flex; align-items: center; gap: 4px;
+  /* Les actions de tâche sont des <button> (clavier, lecteur d'écran) : on
+     efface le style natif pour garder l'apparence de lien. */
+  background: none; border: 0; padding: 0; }
+.v-exp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .v-exp:hover { color: var(--text); }
 /* Variante non-cliquable (indicateur d'attente : « préparation de l'archive »). */
 .v-exp--ghost { cursor: default; opacity: 0.8; }
@@ -667,8 +671,12 @@
   border-top: 1px solid var(--border); padding: 8px 12px;
   font-size: 12px; color: var(--support); cursor: pointer;
   display: flex; align-items: center; gap: 6px;
+  /* <button> pleine largeur : on retire le style natif, la bordure haute reste. */
+  width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0;
+  font-family: var(--font); text-align: left;
 }
 .v-thanks:hover { filter: brightness(1.12); }
+.v-thanks:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ============ modale d'avertissement ToS Discord (premier export) ============ */
 .v-modal--tos {
@@ -1159,3 +1167,36 @@
 .v-help-tip--right .v-help-tip-bubble.open {
   transform: translate(0, -50%);
 }
+
+/* ============ réglage « Rythme » (export discret) ============
+ * Même sélecteur que Simple / Avancé, en pleine largeur. Normal passe en
+ * ambre : c'est le choix le moins prudent, il ne doit pas ressembler au
+ * choix par défaut. L'encart d'avertissement est encadré, sans liseré
+ * gauche (règle maison des maquettes). */
+.v-pace-switch { width: 100%; }
+.v-pace-switch span { flex: 1; text-align: center; padding: 6px 9px; font-size: 11px; }
+.v-pace-switch span.on.v-pace-normal { background: var(--amber); color: #1b1622; }
+.v-pace-warn {
+  margin-top: 10px; padding: 12px; border-radius: 8px;
+  border: 1px solid var(--amber);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  font-size: 12.5px; line-height: 1.5; color: var(--text);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.v-pace-warn p { margin: 0; color: var(--muted); }
+/* Le panneau latéral fait ~300 px : boutons empilés pleine largeur, le
+   choix prudent en premier, aucun libellé tronqué quelle que soit la langue. */
+.v-pace-warn-actions { display: flex; flex-direction: column; gap: 6px; }
+.v-pace-warn-actions .v-btn { width: 100%; white-space: normal; height: auto; min-height: 32px; }
+.v-pace-failed { color: var(--red); }
+.v-modal-risk {
+  margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted);
+}
+.v-stop-reason {
+  margin: 6px 0 0; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid var(--amber);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  font-size: 12.5px; line-height: 1.45; color: var(--text);
+}
+.v-halt { margin: 0 0 10px; display: flex; flex-direction: column; gap: 8px; }
+.v-modal-risk b { color: var(--text); font-weight: 700; }

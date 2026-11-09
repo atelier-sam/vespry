@@ -28,7 +28,7 @@ describe('sanitizeFilename', () => {
   });
 
   it('préserve les espaces (lisibilité)', () => {
-    expect(sanitizeFilename('Groupe avec Sora')).toBe('Groupe avec Sora');
+    expect(sanitizeFilename('Studio Kitsune')).toBe('Studio Kitsune');
   });
 
   it('tronque à 200 caractères', () => {

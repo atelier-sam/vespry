@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CheckpointStore } from './checkpoint-store';
-import { buildJsonEnvelope, packageRun } from './packager';
+import { buildJsonEnvelope, packageRun, ZipNameAllocator } from './packager';
 import { profileForTier } from './perf-profile';
 import { ALL_MEDIA } from './checkpoint-types';
 import type { ChannelProgress, ExportRun, StoredAsset, StoredMessage } from './checkpoint-types';
@@ -353,5 +353,158 @@ describe('buildJsonEnvelope', () => {
     expect(msg['pinned']).toBe(true);
     expect(msg['future_discord_field']).toBe('unknown');
     expect(msg['typeName']).toBe('DEFAULT'); // ajouté en plus
+  });
+});
+
+/**
+ * Homonymes dans le zip (relecture du 06/11/2026). Les captures collées dans
+ * Discord s'appellent toutes `image.png`, et deux catégories ont souvent
+ * chacune leur salon « général » : sans dédoublonnage, deux entrées du zip
+ * portaient le même chemin et l'une écrasait l'autre à la décompression.
+ */
+describe('packageRun — noms homonymes', () => {
+  async function entryNames(blob: Blob): Promise<string[]> {
+    const { BlobReader, ZipReader } = await import('@zip.js/zip.js');
+    const reader = new ZipReader(new BlobReader(blob));
+    const names = (await reader.getEntries()).map((e) => e.filename);
+    await reader.close();
+    return names;
+  }
+
+  it('deux pièces jointes `image.png` du même salon : deux fichiers distincts, chacun référencé', async () => {
+    const r = run('rdup');
+    r.options.formats = ['json'];
+    await store.putRun(r);
+    await store.putChannel(channel('rdup', 'c1', 'general'));
+    const m1 = message('rdup', 'c1', '1');
+    const m2 = message('rdup', 'c1', '2');
+    m1.message.attachments = [{ id: 'a1', filename: 'image.png', url: 'https://cdn/a1/image.png', proxy_url: 'https://cdn/a1/image.png', size: 1 }];
+    m2.message.attachments = [{ id: 'a2', filename: 'image.png', url: 'https://cdn/a2/image.png', proxy_url: 'https://cdn/a2/image.png', size: 1 }];
+    await store.appendMessages([m1, m2]);
+    for (const [id, url] of [['a1', 'https://cdn/a1/image.png'], ['a2', 'https://cdn/a2/image.png']] as const) {
+      await store.putAsset({
+        runId: 'rdup', assetId: id, channelId: 'c1', url, kind: 'image',
+        filename: 'image.png', status: 'done', blob: new Blob([id]),
+      });
+    }
+
+    const { blob } = await packageRun(store, 'rdup', { profile: profileForTier('fast') });
+    const names = await entryNames(blob);
+    const media = names.filter((n) => n.startsWith('media/'));
+    expect(media).toHaveLength(2);
+    expect(new Set(media).size).toBe(2);
+    expect(new Set(names).size).toBe(names.length);
+
+    // Chaque message pointe vers SON fichier.
+    const ascii = new TextDecoder().decode(new Uint8Array(await blob.arrayBuffer()));
+    for (const path of media) expect(ascii).toContain(`"localPath": "${path}"`);
+  });
+
+  it.each(['fast', 'low'] as const)('deux salons « general » (%s) : deux fichiers JSON distincts', async (tier) => {
+    const r = run(`rsal-${tier}`);
+    r.options.formats = ['json'];
+    await store.putRun(r);
+    await store.putChannel(channel(r.id, 'c1', 'general'));
+    await store.putChannel(channel(r.id, 'c2', 'general'));
+    await store.putChannel(channel(r.id, 'c3', 'General')); // FS insensibles à la casse
+    await store.appendMessages([message(r.id, 'c1', '1'), message(r.id, 'c2', '2'), message(r.id, 'c3', '3')]);
+
+    const { blob, manifest } = await packageRun(store, r.id, { profile: profileForTier(tier) });
+    const json = (await entryNames(blob)).filter((n) => n.startsWith('json/'));
+    expect(json).toHaveLength(3);
+    expect(new Set(json.map((n) => n.toLowerCase())).size).toBe(3);
+    const files = (manifest as { channels: { files: string[] }[] }).channels.flatMap((c) => c.files);
+    expect(new Set(files.map((f) => f.toLowerCase())).size).toBe(3);
+  });
+
+  it('contrôle positif : des noms distincts restent inchangés', async () => {
+    const r = run('rpos');
+    r.options.formats = ['json'];
+    await store.putRun(r);
+    await store.putChannel(channel('rpos', 'c1', 'annonces'));
+    await store.putChannel(channel('rpos', 'c2', 'croquis'));
+    await store.appendMessages([message('rpos', 'c1', '1'), message('rpos', 'c2', '2')]);
+    const { blob } = await packageRun(store, 'rpos', { profile: profileForTier('fast') });
+    const json = (await entryNames(blob)).filter((n) => n.startsWith('json/')).sort();
+    expect(json).toEqual(['json/annonces.json', 'json/croquis.json']);
+  });
+});
+
+describe('ZipNameAllocator', () => {
+  it('premier venu garde son nom, les suivants prennent -2, -3 avant l\'extension', () => {
+    const a = new ZipNameAllocator();
+    expect(a.claim('media/general/image.png')).toBe('media/general/image.png');
+    expect(a.claim('media/general/image.png')).toBe('media/general/image-2.png');
+    expect(a.claim('media/general/Image.PNG')).toBe('media/general/Image-3.PNG');
+  });
+  it('sans extension à garder : suffixe en fin de nom (nom de salon pointé)', () => {
+    const a = new ZipNameAllocator();
+    expect(a.claim('general.croquis', false)).toBe('general.croquis');
+    expect(a.claim('general.croquis', false)).toBe('general.croquis-2');
+  });
+  it('un point dans un dossier n\'est pas une extension', () => {
+    const a = new ZipNameAllocator();
+    a.claim('media/a.b/fichier');
+    expect(a.claim('media/a.b/fichier')).toBe('media/a.b/fichier-2');
+  });
+  it('un suffixe déjà pris est sauté', () => {
+    const a = new ZipNameAllocator();
+    a.claim('x/image-2.png');
+    a.claim('x/image.png');
+    expect(a.claim('x/image.png')).toBe('x/image-3.png');
+  });
+});
+
+/**
+ * INDEX.md (relecture du 06/11/2026) : il était écrit en français en dur
+ * pour toutes les langues. Il passe désormais par `t()` (clés `idx.*`) ; les
+ * tests tournent en anglais (`navigator.language` = en-US), donc on y lit
+ * l'anglais — et plus un mot de français.
+ */
+describe('packageRun — INDEX.md', () => {
+  async function readIndex(blob: Blob): Promise<string> {
+    const { BlobReader, TextWriter, ZipReader } = await import('@zip.js/zip.js');
+    const reader = new ZipReader(new BlobReader(blob));
+    const entry = (await reader.getEntries()).find((e) => e.filename === 'INDEX.md');
+    if (!entry || entry.directory) throw new Error('INDEX.md absent du zip');
+    const text = await entry.getData(new TextWriter());
+    await reader.close();
+    return text;
+  }
+
+  it('est rédigé via t() : ni français en dur, ni clé brute', async () => {
+    await store.putRun(run('ridx'));
+    await store.putChannel(channel('ridx', 'c1', 'general'));
+    await store.appendMessages([message('ridx', 'c1', '1'), message('ridx', 'c1', '2')]);
+    const { blob } = await packageRun(store, 'ridx', { profile: profileForTier('fast') });
+    const index = await readIndex(blob);
+
+    expect(index).toContain('# Discord export — Groupe Test');
+    expect(index).toContain('- Channels: **1**');
+    expect(index).toContain('- Messages: **2**');
+    expect(index).toContain('| Channel | Messages | Media | Files |');
+    // Le contrat du format reste lisible tel quel.
+    for (const token of ['`json/<channel>.json`', '`localPath`', '`message_reference`', '`manifest.json`']) {
+      expect(index).toContain(token);
+    }
+    // Renvoi vers le schéma complet, avec son lien.
+    expect(index).toContain(
+      '[`docs/SCHEMA.md`](https://github.com/atelier-sam/vespry/blob/main/docs/SCHEMA.md)',
+    );
+    // Contrôle négatif : plus de français en dur, et aucune clé non résolue.
+    expect(index).not.toMatch(/Comment lire|Médias téléchargés|Fichiers|Salons/);
+    expect(index).not.toMatch(/\bidx\./);
+    expect(index).not.toMatch(/\{(guild|url)\}/);
+  });
+
+  it('liste chaque salon et ses fichiers dans le tableau', async () => {
+    const r = run('ridx2');
+    r.options.formats = ['json'];
+    await store.putRun(r);
+    await store.putChannel(channel('ridx2', 'c1', 'annonces'));
+    await store.appendMessages([message('ridx2', 'c1', '1')]);
+    const { blob } = await packageRun(store, 'ridx2', { profile: profileForTier('fast') });
+    const index = await readIndex(blob);
+    expect(index).toContain('| annonces | 1 | 0 | `json/annonces.json` |');
   });
 });

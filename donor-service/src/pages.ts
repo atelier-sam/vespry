@@ -7,7 +7,9 @@
  *
  * La langue vient du navigateur (`Accept-Language`) — voir `i18n.ts`.
  */
+import { PROJECT_URL } from './donate-page';
 import { pickLocale, strings, type Locale } from './i18n';
+import { SHARED_STRINGS } from './page-strings.generated';
 
 function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -40,6 +42,8 @@ function shell(locale: Locale, title: string, inner: string, script: string): st
   .beat { animation: beat 1.4s ease-in-out infinite; }
   h1 { font-size: 25px; margin: 14px 0 8px; font-weight: 800; }
   p { font-size: 14px; color: #9991b3; line-height: 1.55; }
+  .back { margin-top: 18px; }
+  .back a { color: #e7e3f2; }
   @keyframes beat { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
   @keyframes in {
     from { opacity: 0; transform: translateY(12px) scale(.96); }
@@ -54,6 +58,14 @@ function shell(locale: Locale, title: string, inner: string, script: string): st
 </html>`;
 }
 
+/**
+ * Retour d'un don lancé depuis la page publique `/donate` (onglet ordinaire) :
+ * pas de fenêtre à refermer ni d'extension à prévenir, un lien à la place.
+ */
+function fromWeb(req: Request): boolean {
+  return new URL(req.url).searchParams.get('via') === 'web';
+}
+
 /** Échappe le contenu texte d'un nœud HTML (pas pour les attributs). */
 function escapeText(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -63,6 +75,17 @@ function escapeText(s: string): string {
 export function successPage(req: Request): string {
   const locale = pickLocale(req.headers.get('Accept-Language'));
   const s = strings(locale);
+  if (fromWeb(req)) {
+    return shell(
+      locale,
+      s.successTitle,
+      `<div class="glyph beat">💜</div>
+       <h1>${escapeText(s.successHeading)}</h1>
+       <p>${escapeText(s.webSuccessBody)}</p>
+       <p class="back"><a href="${PROJECT_URL}">${escapeText(s.back)} ↗</a></p>`,
+      '',
+    );
+  }
   return shell(
     locale,
     s.successTitle,
@@ -78,6 +101,17 @@ export function successPage(req: Request): string {
 export function cancelPage(req: Request): string {
   const locale = pickLocale(req.headers.get('Accept-Language'));
   const s = strings(locale);
+  if (fromWeb(req)) {
+    return shell(
+      locale,
+      s.cancelTitle,
+      `<div class="glyph">🌙</div>
+       <h1>${escapeText(s.cancelHeading)}</h1>
+       <p>${escapeText(s.webCancelBody)}</p>
+       <p class="back"><a href="/donate">← ${escapeText(SHARED_STRINGS[locale].title)}</a> · <a href="${PROJECT_URL}">${escapeText(s.back)} ↗</a></p>`,
+      '',
+    );
+  }
   return shell(
     locale,
     s.cancelTitle,

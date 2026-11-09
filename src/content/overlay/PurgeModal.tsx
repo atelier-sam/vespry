@@ -11,6 +11,10 @@
  * (statut `completed` / `partial` / `failed`), la modale affiche un bandeau
  * et offre un bouton « Fermer ».
  *
+ * Export discret (06/11/2026) : la modale rappelle le risque de sanction et
+ * porte le réglage « Rythme » (Discret par défaut). Un arrêt net (refus de
+ * Discord, onglet fermé) affiche sa raison traduite.
+ *
  * Composant isolé dans son propre fichier pour éviter les conflits sur
  * `Overlay.tsx` avec les autres chantiers Phase 2/3 en parallèle.
  */
@@ -18,7 +22,9 @@ import { useEffect, useState } from 'preact/hooks';
 import type { PurgeItemView } from '../../messaging';
 import type { RemoteController } from '../../ui/remote-controller';
 import type { RawChannel, RawGuild } from '../../engine/types';
-import { t } from '../../ui/i18n';
+import { currentLocale, t } from '../../ui/i18n';
+import { confirmWordMatches } from '../../ui/confirm-word';
+import { PaceSetting } from './PaceSetting';
 
 interface Props {
   controller: RemoteController;
@@ -66,7 +72,10 @@ export function PurgeModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [item, onClose]);
 
-  const canConfirm = typed.trim() === confirmWord && !submitting && purgeId === null;
+  // Verrou d'arrêt posé (Discord a refusé) : pas de suppression tant que
+  // l'utilisateur n'a pas levé le verrou depuis le bandeau du panneau.
+  const canConfirm = confirmWordMatches(typed, confirmWord, currentLocale()) && !submitting && purgeId === null
+    && controller.halt === null;
   const total = messageIds.length;
 
   async function onConfirm(): Promise<void> {
@@ -105,6 +114,15 @@ export function PurgeModal({
                   channel: channel.name ?? channel.id,
                 })}
               </p>
+              {/* Export discret : la suppression en série est l'usage le plus
+                  surveillé par Discord. Le risque est dit ici, à chaque fois,
+                  et le rythme se règle sans quitter la modale. */}
+              <p class="v-modal-risk"><b>{t('tos.sanctions')}</b></p>
+              <p class="v-modal-risk">{t('purge.risk')} {t('tos.no_guarantee')}</p>
+              <PaceSetting controller={controller} />
+              {controller.halt && (
+                <p class="v-modal-risk v-stop-reason" role="alert">{t(`stop.${controller.halt}`)}</p>
+              )}
               <p class="v-modal-confirm-help">
                 {t('purge.confirm_help', { word: confirmWord })}
               </p>
@@ -143,6 +161,9 @@ export function PurgeModal({
                     : 0}%`}
                 />
               </div>
+              {item.stopReason && (
+                <p class="v-modal-risk v-stop-reason">{t(`stop.${item.stopReason}`)}</p>
+              )}
               {item.log.length > 0 && (
                 <pre class="v-purge-log">{item.log.slice(-6).join('\n')}</pre>
               )}

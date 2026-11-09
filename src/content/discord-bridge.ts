@@ -11,6 +11,7 @@
  * diagnostic automatisé.
  */
 import { BRIDGE_SOURCE, type BridgeTokenMessage } from '../messaging';
+import { installRestServer, observeClientHeader } from './rest-bridge';
 
 interface BridgeDebug {
   __vespryBridge?: boolean;
@@ -34,6 +35,20 @@ function publishToken(token: string): void {
   dbg.__vespryPosted = (dbg.__vespryPosted ?? 0) + 1;
   const msg: BridgeTokenMessage = { source: BRIDGE_SOURCE, type: 'token', token };
   window.postMessage(msg, window.location.origin);
+}
+
+/** Transmet chaque en-tête d'une requête du client à la capture de `rest-bridge`. */
+function observeHeaders(headers: HeadersInit | undefined): void {
+  if (!headers) return;
+  if (headers instanceof Headers) {
+    headers.forEach((v, k) => observeClientHeader(k, v));
+    return;
+  }
+  if (Array.isArray(headers)) {
+    for (const [k, v] of headers) if (k && v) observeClientHeader(k, v);
+    return;
+  }
+  for (const [k, v] of Object.entries(headers)) observeClientHeader(k, v);
 }
 
 function extractFromHeaders(headers: HeadersInit | undefined): string | null {
@@ -63,7 +78,11 @@ window.fetch = function patchedFetch(
   dbg.__vespryFetch = (dbg.__vespryFetch ?? 0) + 1;
   try {
     let token: string | null = null;
-    if (input instanceof Request) token = input.headers.get('authorization');
+    if (input instanceof Request) {
+      token = input.headers.get('authorization');
+      observeHeaders(input.headers);
+    }
+    observeHeaders(init?.headers);
     if (!token) token = extractFromHeaders(init?.headers);
     if (token) publishToken(token);
   } catch {
@@ -81,9 +100,14 @@ XMLHttpRequest.prototype.setRequestHeader = function patchedSetRequestHeader(
 ): void {
   dbg.__vespryXhr = (dbg.__vespryXhr ?? 0) + 1;
   try {
+    observeClientHeader(name, value);
     if (name.toLowerCase() === 'authorization') publishToken(value);
   } catch {
     /* idem : ne jamais perturber Discord */
   }
   return originalSetRequestHeader.call(this, name, value);
 };
+
+// --- Émetteur REST (requêtes du moteur, émises depuis cette page) ---
+// `originalFetch` : la voie de repli ne repasse pas par notre propre patch.
+installRestServer(originalFetch);

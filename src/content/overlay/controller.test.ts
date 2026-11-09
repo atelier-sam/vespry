@@ -7,8 +7,14 @@
  * la logique extraite en fonctions pures — actuellement `collectDmThreads`.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { collectDmThreads, type DmThreadProbe } from './controller';
-import type { RawChannel, RawMessage } from '../../engine/types';
+import {
+  collectDmThreads,
+  collectGuildThreads,
+  MAX_THREAD_SEARCH_PAGES,
+  type DmThreadProbe,
+  type GuildThreadProbe,
+} from './controller';
+import { DiscordApiError, type RawChannel, type RawMessage } from '../../engine/types';
 
 /** Crée un message minimal avec un thread optionnel. */
 function makeMessage(id: string, thread?: RawChannel): RawMessage {
@@ -131,5 +137,80 @@ describe('collectDmThreads', () => {
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]).toBe(dm);
+  });
+});
+
+describe('collectDmThreads — refus de Discord', () => {
+  it('un refus n\'est jamais avalé : il remonte', async () => {
+    const api: DmThreadProbe = {
+      getMessages: vi.fn(async () => { throw new DiscordApiError('refused', 403, 'non'); }),
+    };
+    await expect(collectDmThreads(api, [{ id: 'dm-1', type: 1 }])).rejects.toMatchObject({ kind: 'refused' });
+  });
+});
+
+// Essai réel du 06/11/2026 : uniquement les requêtes que le client fait.
+describe('collectGuildThreads', () => {
+  const text: RawChannel = { id: 'c1', type: 0, name: 'général' };
+  const forum: RawChannel = { id: 'f1', type: 15, name: 'forum' };
+  const voice: RawChannel = { id: 'v1', type: 2, name: 'vocal' };
+
+  function guildApi(over: Partial<GuildThreadProbe> = {}): GuildThreadProbe {
+    return {
+      getMessages: vi.fn(async () => []),
+      searchArchivedThreads: vi.fn(async () => ({ threads: [], hasMore: false })),
+      ...over,
+    };
+  }
+
+  it('fils des messages récents + fils archivés paginés (offset cumulé), dédupliqués', async () => {
+    const active = makeThread('t-active', 'actif', 'c1');
+    const archivedA = makeThread('t-a', 'archivé A', 'c1');
+    const archivedB = makeThread('t-b', 'archivé B', 'c1');
+    const search = vi.fn(async (_ch: string, offset: number) => (offset === 0
+      ? { threads: [archivedA, active], hasMore: true }
+      : { threads: [archivedB], hasMore: false }));
+    const api = guildApi({
+      getMessages: vi.fn(async () => [makeMessage('1', active), makeMessage('2')]),
+      searchArchivedThreads: search,
+    });
+    const out = await collectGuildThreads(api, [text]);
+    expect(out.map((c) => c.id)).toEqual(['c1', 't-active', 't-a', 't-b']);
+    expect(search.mock.calls).toEqual([['c1', 0], ['c1', 2]]);
+  });
+
+  it('forum : recherche de fils, pas de lecture de messages ; vocal : rien', async () => {
+    const api = guildApi();
+    await collectGuildThreads(api, [forum, voice]);
+    expect(api.getMessages).not.toHaveBeenCalled();
+    expect(api.searchArchivedThreads).toHaveBeenCalledTimes(1);
+    expect(api.searchArchivedThreads).toHaveBeenCalledWith('f1', 0);
+  });
+
+  it('pagination bornée', async () => {
+    let n = 0;
+    const api = guildApi({
+      searchArchivedThreads: vi.fn(async () => ({ threads: [makeThread(`t${n++}`, 'x', 'f1')], hasMore: true })),
+    });
+    await collectGuildThreads(api, [forum]);
+    expect(api.searchArchivedThreads).toHaveBeenCalledTimes(MAX_THREAD_SEARCH_PAGES);
+  });
+
+  it('salon inaccessible (forbidden) : ignoré, la suite continue', async () => {
+    const api = guildApi({
+      getMessages: vi.fn(async () => { throw new DiscordApiError('forbidden', 403, 'accès'); }),
+      searchArchivedThreads: vi.fn(async () => { throw new DiscordApiError('forbidden', 403, 'accès'); }),
+    });
+    expect((await collectGuildThreads(api, [text, forum])).map((c) => c.id)).toEqual(['c1', 'f1']);
+  });
+
+  it('refus de Discord pendant la lecture ou la recherche : remonte, rien d\'autre n\'est demandé', async () => {
+    const refused = () => { throw new DiscordApiError('refused', 403, 'non'); };
+    const a = guildApi({ getMessages: vi.fn(async () => refused()) });
+    await expect(collectGuildThreads(a, [text, forum])).rejects.toMatchObject({ kind: 'refused' });
+    expect(a.searchArchivedThreads).not.toHaveBeenCalled();
+    const b = guildApi({ searchArchivedThreads: vi.fn(async () => refused()) });
+    await expect(collectGuildThreads(b, [forum, text])).rejects.toMatchObject({ kind: 'refused' });
+    expect(b.getMessages).not.toHaveBeenCalled();
   });
 });

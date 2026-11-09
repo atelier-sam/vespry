@@ -1,183 +1,163 @@
 # Politique de confidentialité — Vespry
 
-**Dernière mise à jour : 18 mai 2026.**
+**Dernière mise à jour : 6 novembre 2026** (version 1.1.0).
+English version: [PRIVACY.en.md](PRIVACY.en.md).
 
 Vespry est une extension de navigateur (Chrome, Edge, Firefox) qui exporte
 l'historique des conversations Discord de l'utilisateur dans un fichier
-sauvegardé localement sur sa machine.
+`.zip` enregistré sur sa machine.
 
-Cette politique de confidentialité explique quelles données Vespry traite,
-comment, où, et ce qu'elle n'envoie nulle part.
+Cette politique dit quelles données Vespry traite, où elles vont, et ce qui
+n'est envoyé nulle part.
 
 ## Éditeur
 
 - **Éditeur** : Samuel Muselet (L'Atelier de Sam)
-- **Contact** : via les
-  [issues GitHub](https://github.com/atelier-sam/vespry/issues)
+- **Contact** : [issues GitHub](https://github.com/atelier-sam/vespry/issues) ;
+  pour une faille de sécurité, le
+  [signalement privé](https://github.com/atelier-sam/vespry/security/advisories/new)
+  du dépôt (visible de l'éditeur seul).
 - **Code source** : https://github.com/atelier-sam/vespry (MIT)
 
-## Principe : tout reste en local
+## Principe : tes données restent sur ta machine
 
-Toutes les données traitées par Vespry restent sur **ta machine**, à deux
-exceptions explicites détaillées ci-dessous (Stripe et télémétrie de
-schéma — toutes deux optionnelles).
+Les messages, les médias et les exports ne quittent jamais ton ordinateur.
+Vespry n'a aucun serveur qui les reçoit. Aucun pixel de suivi, aucun script
+d'analyse, aucun cookie posé par Vespry.
 
-Aucune base de données distante, aucun pixel de tracking, aucun script
-analytique, aucun cookie tiers. Le code est public et auditable.
+## Données traitées, et où elles restent
 
-## Données collectées et traitées
-
-| Donnée | D'où | Où va-t-elle | Pourquoi |
-|---|---|---|---|
-| Jeton de session Discord | Intercepté dans la page Discord ouverte par l'utilisateur | `chrome.storage.local` (locale au profil utilisateur, accessible uniquement par Vespry) | Appeler l'API Discord au nom de l'utilisateur, exactement comme son client Discord. |
-| Messages exportés | API Discord (`GET /channels/{id}/messages`) | IndexedDB local, puis fichier `.zip` téléchargé | Reprise après crash + export final. |
-| Médias (images, vidéos, audio, fichiers) | CDN Discord | IndexedDB local, puis dossiers dans le `.zip` | Inclure les médias dans l'archive. |
-| Préférences utilisateur (thème, mode Avancé, templates de noms, planning, opt-in télémétrie) | Interactions utilisateur | `chrome.storage.local` | Persistance entre sessions. |
-| Mot de passe AES-256 du zip (optionnel) | Saisi par l'utilisateur | **RAM uniquement**, le temps d'un export — jamais persisté, jamais envoyé | Chiffrer l'archive. |
+| Donnée | D'où | Où elle reste | Pourquoi | Combien de temps |
+|---|---|---|---|---|
+| Jeton de session Discord | Lu dans la page Discord que tu as ouverte | `chrome.storage.local` (ton profil de navigateur, lisible par Vespry seul) | Détecter que tu t'es reconnecté. Les requêtes, elles, sont émises par le client Discord de ton onglet, avec sa propre session (cf. Sorties réseau, 1). | Jusqu'à « Réinitialiser Vespry » ou la désinstallation |
+| Messages exportés | API Discord, par ton onglet | IndexedDB (ton navigateur), puis le `.zip` téléchargé | Reprendre un export interrompu, puis fabriquer l'archive | Jusqu'à la suppression de l'export dans l'historique, « Réinitialiser Vespry » ou la désinstallation |
+| Médias (images, vidéos, audio, fichiers) | CDN Discord (liens signés) | IndexedDB, puis le `.zip` | Inclure les médias dans l'archive | Idem |
+| Mot de passe de l'archive (optionnel) | Saisi par toi | IndexedDB, **pendant l'export seulement** | Pouvoir reprendre l'export après une coupure et chiffrer l'archive à la fin | **Effacé dès l'archive chiffrée fabriquée.** Une archive chiffrée n'est ensuite jamais refaite en clair : il faut relancer l'export |
+| Préférences (thème, mode Avancé, rythme, modèle de nom de fichier, planning, choix de télémétrie) | Tes réglages | `chrome.storage.local` | Les retrouver d'une session à l'autre | Jusqu'à « Réinitialiser Vespry » ou la désinstallation |
 
 ## Sorties réseau (les seules)
 
-Six sorties réseau, toutes explicites. Les trois dernières sont liées au
-mur des soutiens, à la mise à jour des crédits, et au check de version
-GitHub — elles ne véhiculent aucune donnée utilisateur autre que
-l'IP/User-Agent inhérents à toute requête HTTP.
+### 1. Discord
 
-### 1. API Discord
+Toutes les requêtes vers l'API Discord sont émises **depuis ton onglet
+discord.com, par le client Discord lui-même** : même origine, mêmes cookies,
+mêmes en-têtes que quand tu navigues. L'extension n'appelle jamais l'API
+Discord directement (un test du code l'interdit). Les médias sont ensuite
+téléchargés depuis le CDN Discord (`cdn.discordapp.com`,
+`media.discordapp.net`) par leurs liens signés, sans jeton.
 
-Vespry appelle l'API officielle Discord (`discord.com`,
-`cdn.discordapp.com`, `media.discordapp.net`) avec le jeton de session de
-l'utilisateur. C'est l'opération même de l'export : sans ces appels, aucun
-historique ne peut être récupéré.
+Vespry ne transmet ton jeton à aucun serveur.
 
-Vespry ne stocke ni ne transmet ce jeton à un serveur tiers.
+### 2. Stripe (seulement si tu fais un don)
 
-### 2. Stripe (uniquement si l'utilisateur fait un don)
+Le bouton **Soutenir Vespry** ouvre une page de paiement Stripe Checkout.
+Vespry ne voit jamais ta carte : Stripe la collecte directement. Si tu ne
+donnes pas, rien n'est envoyé à Stripe. Politique de Stripe :
+https://stripe.com/fr/privacy
 
-Si l'utilisateur clique sur le bouton **Soutenir** et choisit de faire un
-don, une fenêtre Stripe Checkout s'ouvre. Vespry ne voit jamais la carte
-bancaire — la collecte est faite par Stripe directement dans cette fenêtre.
+Si tu choisis d'apparaître sur le mur des soutiens, ton pseudo et ton
+message sont affichés publiquement. Sinon, ton don est anonyme.
 
-Si l'utilisateur ne fait pas de don, **rien** n'est envoyé à Stripe.
+### 3. Signalement de format (optionnel, désactivé par défaut)
 
-Stripe est conforme RGPD. Voir : https://stripe.com/fr/privacy
-
-### 3. Télémétrie de schéma (opt-in, désactivée par défaut)
-
-L'utilisateur peut activer dans le mode Avancé l'envoi d'un signal minimal
-au service Vespry quand Discord ajoute un champ d'API que Vespry ne sait
-pas encore rendre. Le payload est strictement :
+Dans le mode Avancé, tu peux autoriser Vespry à signaler qu'il a rencontré
+un champ de l'API Discord qu'il ne sait pas encore afficher. Le message
+envoyé au service Vespry contient strictement :
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "1.1.0",
   "locale": "fr-FR",
-  "fields": ["voice_notes_v2", "..."]
+  "fields": ["message.voice_notes_v2", "..."]
 }
 ```
 
-**Jamais envoyé** : le jeton, le contenu d'un message, un identifiant
-utilisateur ou de salon, un nom de personne, l'IP stockée, une stack
-trace, un identifiant d'installation.
+**Jamais envoyé** : le jeton, un contenu de message, un identifiant
+d'utilisateur, de serveur ou de salon, un nom, un identifiant
+d'installation. Le service n'enregistre pas ton adresse IP ; il ouvre une
+issue GitHub publique par nouvelle combinaison de champs, pour prioriser les
+mises à jour. Code : `src/engine/schema-report.ts` (extension) et
+`donor-service/src/schema-reports.ts` (service).
 
-Le code de cette télémétrie est dans `src/engine/schema-report.ts`
-(moins de 80 lignes, lisibles). Le serveur Vespry stocke le rapport dans
-une issue GitHub publique pour priorisation des futurs développements.
+### 4. Mur des soutiens et crédits
 
-Cette télémétrie est **désactivée par défaut**. L'utilisateur peut
-l'activer ou la désactiver à tout moment dans le mode Avancé.
+À l'ouverture du panneau, Vespry lit :
 
-### 4. GitHub Raw — fichier `credits.json`
+- `https://vespry-donors.sam-muselet.workers.dev/donors` : la liste publique
+  des soutiens (pseudo et message de ceux qui ont choisi d'apparaître) ;
+- `https://raw.githubusercontent.com/atelier-sam/vespry/main/credits.json` :
+  l'adresse du service de dons et la liste des contributeurs, pour les
+  mettre à jour sans nouvelle version. En cas d'échec, Vespry utilise la
+  copie intégrée.
 
-Au démarrage de l'overlay, Vespry fait un GET sur
-`https://raw.githubusercontent.com/atelier-sam/vespry/main/credits.json`
-pour récupérer la liste à jour des plateformes de soutien (Ko-fi, GitHub
-Sponsors, URL du Worker des dons) sans nécessiter une mise à jour de
-l'extension elle-même. Le fichier `credits.json` est public, statique,
-versionné dans le dépôt.
+Ces deux lectures ne portent aucune donnée Discord ni aucun identifiant
+Vespry. Comme toute requête web, elles exposent ton adresse IP et ton
+navigateur (User-Agent) à Cloudflare et à GitHub. Le service de dons ne
+journalise ni IP ni identifiant.
 
-**Que voit GitHub ?** L'IP et l'User-Agent du navigateur, classique pour
-toute requête HTTP. GitHub n'a aucune donnée Discord, aucun jeton, aucun
-identifiant utilisateur Vespry.
+### 5. Vérification de version
 
-Si la requête échoue (hors-ligne, dépôt indisponible), l'extension
-retombe sur une copie embarquée dans le bundle. Pas de panne UX.
+Installé depuis un store (Chrome Web Store, Edge, Firefox), Vespry ne fait
+aucune vérification : le store le met à jour. Installé à la main (mode
+développeur), il interroge à l'ouverture du menu
+`https://api.github.com/repos/atelier-sam/vespry/releases/latest` pour savoir
+si une nouvelle version existe. Requête anonyme, sans aucune donnée Discord.
+En cas d'échec, rien ne s'affiche.
 
-### 5. Worker Cloudflare `vespry-donors`
+### 6. Signaler un problème (seulement si tu cliques)
 
-Au démarrage de l'overlay (et après un don validé), Vespry fait un GET
-sur `https://vespry-donors.sam-muselet.workers.dev/donors` pour afficher
-le compteur de soutiens et le bandeau défilant.
+« Signaler un problème » ouvre dans ton navigateur un formulaire de ticket
+GitHub **public**, pré-rempli. Rien n'est envoyé tant que tu ne cliques pas
+toi-même sur « Submit » dans GitHub. Le rapport contient la version de
+Vespry, ton navigateur, ta langue et le journal technique de la tâche ;
+avant d'ouvrir le formulaire, Vespry y **masque** les noms de serveur et de
+salons, les identifiants Discord, les liens et les adresses e-mail. Il ne
+contient jamais ton jeton ni le contenu de tes messages. Relis-le avant de
+l'envoyer.
 
-**Que voit le Worker ?** L'IP, l'User-Agent et le `Referer`
-(`https://discord.com/...`) — données par défaut de toute requête HTTP
-qui passent par Cloudflare. Le Worker ne logue **pas** d'identifiant
-utilisateur Vespry, pas de jeton Discord, pas de contenu, et n'écrit
-rien dans D1 sur cette route GET. La D1 ne contient que les soutiens
-publics agrégés (pseudonyme + message + date), pas d'IPs.
+## Tes droits (RGPD)
 
-**À venir (v0.2)** : option « afficher le mur des soutiens » désactivée
-par défaut pour les utilisateurs qui veulent zéro requête sortante hors
-Discord.
+Vespry ne traite aucune donnée personnelle sur ses serveurs, sauf le pseudo
+et le message des soutiens qui ont choisi d'apparaître sur le mur public.
 
-### 6. GitHub API — check de version
-
-À l'ouverture du popup, Vespry fait un GET sur
-`https://api.github.com/repos/atelier-sam/vespry/releases/latest` pour
-détecter si une nouvelle version de l'extension est disponible. Si oui,
-une bannière propose de l'installer en cliquant (lien vers GitHub
-Releases).
-
-**Que voit GitHub ?** IP et User-Agent — données par défaut d'une
-requête HTTP. Aucune donnée Discord, aucun identifiant Vespry. L'API
-GitHub `/repos/.../releases/latest` est anonyme et publique
-(60 requêtes/h sans token).
-
-Si la requête échoue (hors-ligne, rate-limit, etc.), aucun message
-d'erreur — l'utilisateur ne voit juste pas la bannière.
-
-## Conformité RGPD
-
-Vespry ne traite aucune donnée à caractère personnel sur ses propres
-serveurs (sauf, pour les soutiens publics qui le choisissent, leur pseudo
-et message affichés sur le mur des soutiens — flux public anonymisable à
-la demande). Les exports restent locaux à la machine de l'utilisateur.
-
-**Droits RGPD** (accès, rectification, effacement) :
-
-- Pour les exports locaux : l'utilisateur a un contrôle total
-  (supprimer le `.zip` et vider le `chrome.storage` suffit).
-- Pour le mur des soutiens public : envoyer une demande via les
-  [issues GitHub](https://github.com/atelier-sam/vespry/issues) ; le
-  donneur ou son message sera masqué.
+- **Données locales** : tu en as le contrôle complet. Supprime un export
+  depuis l'historique du menu de l'extension, ou efface tout avec
+  « Réinitialiser Vespry » (même menu), ou désinstalle l'extension.
+- **Mur des soutiens** : demande la suppression ou le masquage de ton nom ou
+  de ton message par une [issue GitHub](https://github.com/atelier-sam/vespry/issues).
+- **Paiement** : Stripe conserve les données du paiement selon ses propres
+  obligations légales.
 
 ## Cookies
 
-Vespry ne dépose **aucun cookie de son côté**. Cloudflare (devant le
-Worker `vespry-donors`) et GitHub (raw.githubusercontent.com) peuvent
-poser des cookies de protection anti-DDoS (`__cf_bm`, par exemple) lors
-des deux requêtes auxiliaires (cf. § Sorties réseau 4 et 5). Ces
-cookies sont du ressort de ces tiers et indispensables au routage de
-la requête — ils ne sont pas lus par Vespry.
+Vespry ne dépose aucun cookie. Cloudflare (devant le service de dons) et
+GitHub peuvent poser leurs cookies techniques de protection lors des
+lectures du § 4 ; Vespry ne les lit pas.
 
 ## Sécurité
 
-- Code open source, auditable par tous.
-- Politique de divulgation : si tu trouves une faille, ouvre une issue
-  GitHub privée ou contacte-moi directement.
-- AES-256 disponible pour chiffrer l'archive exportée (option utilisateur).
+- Code source ouvert et auditable.
+- Faille de sécurité : utilise le
+  [signalement privé](https://github.com/atelier-sam/vespry/security/advisories/new),
+  pas une issue publique.
+- Chiffrement AES-256 optionnel de l'archive exportée.
 
-## Modifications de cette politique
+## Modifications
 
-Toute modification est publiée sur GitHub avec un historique git complet
-(branche `main`, fichier `PRIVACY.md`). Les modifications majeures sont
-annoncées dans `CHANGELOG.md`.
+Toute modification de cette politique est publiée dans le dépôt
+(`PRIVACY.md`, historique git complet) et signalée dans `CHANGELOG.md`.
 
-## Avertissement Discord
+## Discord
 
-Vespry utilise l'API Discord avec un compte utilisateur, ce qui sort des
-conditions d'utilisation de Discord (`https://discord.com/terms`). Vespry
-est conçu pour un usage privé sur les propres données de l'utilisateur.
-L'utilisateur est seul responsable de son usage de l'outil.
+Exporter son historique avec un compte utilisateur sort des conditions
+d'utilisation de Discord (https://discord.com/terms), et depuis mars 2026
+des utilisateurs rapportent des sanctions sur leur compte après avoir exporté
+leur historique. Vespry réduit ce risque (requêtes émises par ton onglet,
+rythme humain, arrêt au premier refus) mais ne peut pas le supprimer :
+l'avertissement affiché avant le premier export le dit. L'export officiel de
+Discord (Paramètres → Données et confidentialité → Demande de données) ne
+fait courir aucun risque à ton compte, mais il ne contient que tes propres
+messages.
 
-Vespry n'est pas affilié à Discord Inc. « Discord » et le logo Discord
-sont des marques de Discord Inc.
+Vespry n'est pas affilié à Discord Inc. « Discord » est une marque de
+Discord Inc.

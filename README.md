@@ -10,7 +10,7 @@
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-coming_soon-7b6cf0?logo=googlechrome&logoColor=white)](#-install)
 [![Microsoft Edge Add-ons](https://img.shields.io/badge/Edge_Add--ons-coming_soon-7b6cf0?logo=microsoftedge&logoColor=white)](#-install)
-[![Firefox Add-ons](https://img.shields.io/badge/Firefox_Add--ons-coming_soon-7b6cf0?logo=firefoxbrowser&logoColor=white)](#-install)
+[![Firefox Add-ons](https://img.shields.io/amo/v/vespry-discord-export?label=Firefox%20Add-ons&color=7b6cf0&logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/vespry-discord-export/)
 <br/>
 [![Latest release](https://img.shields.io/github/package-json/v/atelier-sam/vespry?label=version&color=ec6a93)](https://github.com/atelier-sam/vespry/releases/latest)
 [![CI](https://github.com/atelier-sam/vespry/actions/workflows/ci.yml/badge.svg)](https://github.com/atelier-sam/vespry/actions/workflows/ci.yml)
@@ -235,9 +235,11 @@ Spotted a mistake? [Open an issue](https://github.com/atelier-sam/vespry/issues)
 
 ## 🚀 Install
 
-**From the stores** (recommended, automatic updates): Chrome Web Store,
-Microsoft Edge Add-ons and Firefox Add-ons listings are on their way. The
-badges at the top will link to them as soon as each store approves Vespry.
+**From the stores** (recommended, automatic updates):
+
+- **Firefox** (desktop and Android): [Vespry on Firefox Add-ons](https://addons.mozilla.org/firefox/addon/vespry-discord-export/).
+- **Chrome Web Store** and **Microsoft Edge Add-ons**: on their way. The badges
+  at the top will link to them as soon as each store approves Vespry.
 
 **By hand, in the meantime**: download the latest
 [release](https://github.com/atelier-sam/vespry/releases/latest).

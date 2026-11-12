@@ -103,6 +103,10 @@ libellé de palier change dans `src/locales`.
    300×300, justifications par permission, soumettre. Review 1-3 j.
 4. **Mozilla AMO** — compte dev (gratuit), upload du zip Firefox **+ zip
    source**, métadonnées, soumettre. Review 1-3 j.
+   ✅ **Publié le 12/11/2026** (1.1.0, soumis le 09/11, contrôle automatique
+   passé, approbation « provisoire » : un relecteur humain peut encore
+   demander des changements) :
+   https://addons.mozilla.org/firefox/addon/vespry-discord-export/
 5. **donor-service** — vérifier que le Worker
    `https://vespry-donors.sam-muselet.workers.dev` répond (optionnel ; le
    footer « Mur des soutiens » échoue proprement sinon).
@@ -110,9 +114,11 @@ libellé de palier change dans `src/locales`.
 ## 6. Après publication
 
 - Remplacer les badges « coming soon » / « bientôt » de `README.md` et
-  `README.fr.md` par les liens des fiches store, et passer le lien
-  d'accueil du dépôt GitHub (aujourd'hui la page de dons) sur la fiche
-  Chrome Web Store.
+  `README.fr.md` par les liens des fiches store. Firefox fait le 12/11/2026
+  (badge dynamique shields.io `amo/v`, il suit la version publiée). Le lien
+  d'accueil du dépôt GitHub est passé de la page de dons à la fiche AMO, seule
+  installation par un store à cette date ; il ira sur la fiche Chrome Web
+  Store quand elle existera (la plupart des visiteurs sont sous Chromium).
 - `scripts/publier-stores.sh` (à écrire après la première acceptation dans
   chaque store) : envoie le zip d'une version taguée aux trois stores par
   leurs API, pour que chaque release Gitea parte en mise à jour sans geste
